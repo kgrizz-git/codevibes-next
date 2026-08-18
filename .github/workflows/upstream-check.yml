@@ -22,7 +22,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
-          gh api /user --jq '.login' || true
+          echo "GH_TOKEN prefix: ${GH_TOKEN:0:10}"
+          echo "GITHUB_TOKEN prefix: ${GITHUB_TOKEN:0:10}"
+          gh auth status 2>&1 | head -8 || true
+          echo "--- retry gh api /user ---"
+          gh api /user --jq '.login' 2>&1 || true
           echo "--- REST issue create test ---"
           curl -s -w "\nHTTP %{http_code}\n" -X POST \
             -H "Authorization: token $GH_TOKEN" \
