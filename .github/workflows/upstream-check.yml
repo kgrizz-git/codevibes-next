@@ -17,6 +17,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Token diagnostics (temporary)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
+          gh api /user --jq '.login' || true
+          echo "--- REST issue create test ---"
+          curl -s -w "\nHTTP %{http_code}\n" -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/$GITHUB_REPOSITORY/issues \
+            -d '{"title":"token-permission-test","body":"diagnostic"}'
+
       - name: Check for upstream updates
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
