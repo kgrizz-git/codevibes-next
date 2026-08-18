@@ -54,12 +54,12 @@ jobs:
           $COMMITS
 
           Review locally with:
-          \`\`bash
+          \`\`\`bash
           git fetch upstream && git log --oneline HEAD..upstream/main
           \`\`\`
 
           If useful, merge into this fork (or open a PR from a branch):
-          \`\`bash
+          \`\`\`bash
           git fetch upstream && git merge upstream/main
           \`\`\`"
             PAYLOAD="$(jq -n --arg title "Upstream has $NEW_COUNT new commit(s) to review" --arg body "$ISSUE_BODY" '{title: $title, body: $body}')"
