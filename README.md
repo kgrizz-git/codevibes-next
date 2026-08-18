@@ -254,6 +254,41 @@ ALLOWED_ORIGINS=http://localhost:8080
 
 ---
 
+## 🔀 Development (codevibes-next)
+
+This repository is a fork of [danish296/codevibes](https://github.com/danish296/codevibes), developed independently.
+
+### Remotes
+
+| Remote | Points to | Usage |
+|--------|-----------|-------|
+| `origin` | [kgrizz-git/codevibes-next](https://github.com/kgrizz-git/codevibes-next) | Push branches, open PRs here |
+| `upstream` | [danish296/codevibes](https://github.com/danish296/codevibes) | Read-only reference — never push to it |
+
+This clone has a local guard (`git remote set-url --push upstream no-pushing`) so any accidental `git push upstream` fails loudly. Re-apply it in fresh clones if you want the same safety net.
+
+### Daily workflow
+
+```bash
+git checkout -b feature/my-change
+# ... commit your work ...
+git push origin feature/my-change   # then open a PR on GitHub (base: main of this fork)
+```
+
+`gh pr create` from a branch in this repo targets **this fork** by default — it will never open a PR against upstream.
+
+### Syncing upstream changes
+
+A scheduled workflow (`.github/workflows/upstream-check.yml`, weekly + manual trigger) watches upstream `main` and opens an issue here listing any new commits. When you see one:
+
+```bash
+git fetch upstream
+git log --oneline HEAD..upstream/main   # review what's new
+git merge upstream/main                 # or open a PR from a branch first
+```
+
+---
+
 ## 📂 Project Structure
 
 ```

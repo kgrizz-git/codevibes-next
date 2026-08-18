@@ -1,0 +1,77 @@
+name: upstream-check
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for upstream updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          UPSTREAM_URL="https://github.com/danish296/codevibes.git"
+          UPSTREAM_REPO="danish296/codevibes"
+          STATE_FILE="upstream-sync/last-notified.txt"
+
+          git remote add upstream "$UPSTREAM_URL" 2>/dev/null || true
+          git fetch --quiet upstream main
+
+          UPSTREAM_SHA="$(git rev-parse upstream/main)"
+          LAST_SHA=""
+          [ -f "$STATE_FILE" ] && LAST_SHA="$(cat "$STATE_FILE")"
+
+          if [ "$UPSTREAM_SHA" = "$LAST_SHA" ]; then
+            echo "Upstream unchanged since last check."
+            exit 0
+          fi
+
+          if [ -n "$LAST_SHA" ] && git cat-file -e "$LAST_SHA" 2>/dev/null; then
+            RANGE="$LAST_SHA..upstream/main"
+          else
+            RANGE="HEAD..upstream/main"
+          fi
+
+          NEW_COUNT="$(git rev-list --count "$RANGE")"
+
+          if [ "$NEW_COUNT" -gt 0 ]; then
+            COMMITS="$(git log --format='- [%h](https://github.com/'$UPSTREAM_REPO'/commit/%H) %s' "$RANGE")"
+            gh issue create \
+              --title "Upstream has $NEW_COUNT new commit(s) to review" \
+              --body "New commits on ${UPSTREAM_REPO} (main) since the last check:
+
+$COMMITS
+
+Review locally with:
+\`\`bash
+git fetch upstream && git log --oneline HEAD..upstream/main
+\`\`\`
+
+If useful, merge into this fork (or open a PR from a branch):
+\`\`bash
+git fetch upstream && git merge upstream/main
+\`\`\`"
+          else
+            echo "Upstream changes already present in main; recording SHA only."
+          fi
+
+          mkdir -p "$(dirname "$STATE_FILE")"
+          echo "$UPSTREAM_SHA" > "$STATE_FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$STATE_FILE"
+          git commit -m "chore: record upstream check at ${UPSTREAM_SHA:0:8}"
+          git push
