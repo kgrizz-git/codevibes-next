@@ -9,6 +9,3 @@ data/*.sqlite
 .env.local
 .env.*
 !.env.example
-
-# Documentation (exclude all except README)
-*.md
