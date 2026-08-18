@@ -17,7 +17,7 @@
 | @vitest/coverage-v8 | **4.1.11** | must exactly match vitest version | — |
 | eslint | 10.8.1 latest; repo on **^9.32.0** | keep 9.x unless choosing to migrate | typescript-eslint 8.67.0 supports eslint ^8.57\|\|^9\|\|^10, so both work |
 | typescript-eslint | **8.67.0** | `npm i -D typescript-eslint@^8.67.0` | requires TypeScript < 6.1 — repo has 5.8.3 ✓ |
-| eslint-plugin-import | **2.32.0** | `npm i -D eslint-plugin-import@^2.32.0` | provides `import/no-absolute-path`; **peers eslint ≤ 9 only** — blocks eslint 10 upgrade until plugin ships support |
+| eslint-plugin-import-x | latest | `npm i -D eslint-plugin-import-x` | drop-in replacement for `eslint-plugin-import` with proper ESLint 9 flat-config support; provides `import/no-absolute-path` |
 | gitleaks | **v8.30.1** | `brew install gitleaks`; CI: download pinned binary from `github.com/gitleaks/gitleaks/releases/tag/v8.30.1` | — |
 | semgrep | **v1.173.0** | `brew install semgrep` (or `pipx`); CI: pin `semgrep/semgrep:1.173.0` Docker image | — |
 | prettier | **3.9.6** | `npm i -D prettier@^3.9.6` | — |
@@ -84,11 +84,11 @@
 
 ### Absolute-path gate (pre-commit + CI)
 
-**Recommendation: `eslint-plugin-import@^2.32.0` with `import/no-absolute-path` (error), plus a grep in the file-size script.** The repo already has the `@/` alias in both `vite.config.ts` and `tsconfig.app.json` — the rule forces relative or `@/` imports and catches `/src/...`, `/Users/...`, and `http(s)://...` imports that would break under a subpath deployment or another machine:
+**Recommendation: `eslint-plugin-import-x` (community fork with proper ESLint 9 flat-config support) with `import/no-absolute-path` (error), plus a grep in the file-size script.** The official `eslint-plugin-import` has notoriously lagging and buggy flat-config support — `eslint-plugin-import-x` is a drop-in replacement the ecosystem has adopted. The repo already has the `@/` alias in both `vite.config.ts` and `tsconfig.app.json` — the rule forces relative or `@/` imports and catches `/src/...`, `/Users/...`, and `http(s)://...` imports that would break under a subpath deployment or another machine:
 
 ```js
 // root eslint.config.js (and backend flat config)
-import importPlugin from 'eslint-plugin-import'
+import importPlugin from 'eslint-plugin-import-x'
 // ...
 export default [
   // ...
@@ -101,11 +101,10 @@ export default [
   },
 ]
 ```
-Note: `eslint-plugin-import` has **no named `noAbsolutePath` export** — flat config imports the plugin default and references rules by string key.
+Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat config imports the plugin default and references rules by string key.
 
-- Pre-commit: rule runs via lint-staged on staged `*.ts/tsx`; the custom `check-file-size` node script additionally greps **staged non-TS files** for machine-specific absolute paths (`/Users/`, `/home/`, `C:\`) and fails.
+- Pre-commit: rule runs via lint-staged on staged `*.ts/tsx`; the custom `check-file-size` node script additionally greps **staged non-TS files** (use `--diff-filter=ACMR` to exclude deleted files) for machine-specific absolute paths (`/Users/`, `/home/`, `C:\`) and fails.
 - CI: whole repo, in the `quality` job.
-- ⚠️ **Known constraint: `eslint-plugin-import` 2.32.0 peers eslint `^2…^9` only — it does not support eslint 10.** Consistent with the "stay on eslint 9" recommendation, but it blocks a future 10.x migration until the plugin releases support (watch for it).
 
 ---
 
@@ -113,7 +112,7 @@ Note: `eslint-plugin-import` has **no named `noAbsolutePath` export** — flat c
 
 **Recommendation: husky v9.**
 
-- `npx husky@^9.1.7 init` (creates `.husky/`) and **add `"prepare": "husky"` to root `package.json`** — without it, hooks never activate after `npm install` (husky v9 uses `core.hooksPath`; the `prepare` script is the activation step). Husky is **repo-global** (hooks live in `.git/hooks` via `core.hooksPath`), so the root `prepare` is sufficient even though the backend is a separate package. A developer who runs `npm install` only in `codevibes-backend/` will not trigger hook activation — document that `npm install` must be run from the repo root at least once.
+- `npx husky@^9.1.7 init` (creates `.husky/`) and **add `"prepare": "husky"` to root `package.json`** — without it, hooks never activate after `npm install` (husky v9 uses `core.hooksPath`; the `prepare` script is the activation step). Husky is **repo-global** (hooks live in `.git/hooks` via `core.hooksPath`), so the root `prepare` is sufficient even though the backend is a separate package. A developer who runs `npm install` only in `codevibes-backend/` will not trigger hook activation — document in the project README that `npm install` must be run from the repo root at least once.
 - `pre-commit` hook — **gitleaks runs FIRST, before lint-staged mutates the index** (lint-staged `--fix` re-stages modified files; scanning post-fix content can miss/obscure patterns):
   ```sh
   gitleaks protect --staged
@@ -121,11 +120,10 @@ Note: `eslint-plugin-import` has **no named `noAbsolutePath` export** — flat c
   ```
 - `pre-push` hook:
   ```sh
-  gitleaks protect --staged
   npm run typecheck
   npx vitest run --changed  # smoke only; full coverage lives in CI
   ```
-  ⚠️ Both hooks use `--staged` for deterministic staged-only scanning. Without it, `gitleaks protect` defaults to scanning the **entire working tree including untracked files** — a temp `.env` not in `.gitignore` would block the push.
+  ⚠️ gitleaks is intentionally omitted from pre-push. During a push, the staging area is empty (`--staged` scans nothing), and `protect` without `--staged` scans the entire working tree including untracked files. Pre-commit (`protect --staged`) + CI (`detect` on full history) cover both cases. If you want pre-push secret scanning, use `gitleaks protect --log-opts="$2..$1"` to scan the commit range being pushed (the hook receives `<local-ref> <local-sha> <remote-ref> <remote-sha>` on stdin).
 
   `vitest run --changed` compares against HEAD (committed state), not the working tree. On a first push of a new branch, if no commits differ from the tracking ref, it may pass vacuously with zero tests. This is acceptable for a smoke gate; CI is the real safety net.
 - **Per-tool flag cheat-sheet (no `--prefix` — that's npm-only):** eslint → `--config <path>`; tsc → `-p <tsconfig>`; vitest → `--config <path>` or `-c`; gitleaks → `--path <dir>`. Run hooks from repo root and reference configs by path.
@@ -196,18 +194,18 @@ Note: `eslint-plugin-import` has **no named `noAbsolutePath` export** — flat c
 **Recommendation: semgrep OSS, run natively. Do NOT use `returntocorp/semgrep-action` or `semgrep/semgrep-action` — both are deprecated; current guidance is native `semgrep ci` / `semgrep scan` (see semgrep.dev/docs).**
 
 - Local: `brew install semgrep` (v1.173.0). Keep local and CI versions aligned.
-- **No built-in `--changed-files` flag — pass changed files explicitly. Command substitution (`$(git diff …)`) breaks on filenames with spaces, so use `-z`/`-0` (NUL-safe) with an empty guard — `xargs -r` is GNU-only, don't rely on it on macOS:**
+- **No built-in `--changed-files` flag — pass changed files explicitly. Command substitution (`$(git diff …)`) breaks on filenames with spaces, so use `-z`/`-0` (NUL-safe) with an empty guard — `xargs -r` is GNU-only, don't rely on it on macOS. Use `--diff-filter=ACMR` to exclude deleted files (passing a deleted path to semgrep causes "File not found"):**
   ```sh
-  if [ -n "$(git diff --cached --name-only -- '*.ts' '*.tsx')" ]; then
-    git diff --cached -z --name-only -- '*.ts' '*.tsx' | xargs -0 semgrep scan --config p/typescript --config p/javascript
+  if git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' | grep -q .; then
+    git diff --cached -z --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' | xargs -0 semgrep scan --config p/typescript --config p/javascript
   fi
   ```
-- CI: `semgrep ci` — for diff-aware PR scanning set the baseline explicitly:
+- CI: `semgrep ci` — for diff-aware PR scanning set the baseline explicitly (only on PRs; `github.event.pull_request` is undefined on `push` events):
   ```yaml
   env:
-    SEMGREP_BASELINE_REF: ${{ github.event.pull_request.base.sha }}
+    SEMGREP_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
   ```
-  Without a baseline, `semgrep ci` scans the whole repo and surfaces legacy findings. Alternative: a **pinned `semgrep/semgrep:1.173.0`** Docker image with `p/security-audit` + `p/typescript` + `p/javascript`. Version-pin rules in a checked-in `semgrep.yml` if you want zero external drift. Bump the semgrep pin deliberately (release cadence is ~weekly), not silently via `latest`.
+  `github.event.before` provides the previous HEAD SHA on `push` events, giving a reasonable baseline. Without a baseline, `semgrep ci` scans the whole repo and surfaces legacy findings. Alternative: a **pinned `semgrep/semgrep:1.173.0`** Docker image with `p/security-audit` + `p/typescript` + `p/javascript`. Version-pin rules in a checked-in `semgrep.yml` if you want zero external drift. Bump the semgrep pin deliberately (release cadence is ~weekly), not silently via `latest`.
 - Block on errors; start findings as warnings to avoid first-week friction.
 
 ---
