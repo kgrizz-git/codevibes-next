@@ -62,7 +62,7 @@ export function decrypt(encryptedText: string): string {
         decrypted += decipher.final('utf8');
 
         return decrypted;
-    } catch (error) {
+    } catch {
         // If decryption fails, assume it's legacy unencrypted data
         return encryptedText;
     }

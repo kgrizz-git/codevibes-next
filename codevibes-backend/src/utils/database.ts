@@ -64,11 +64,11 @@ db.exec(`
 // Migration: Add new columns if they don't exist
 try {
     db.exec('ALTER TABLE analyses ADD COLUMN files_scanned INTEGER DEFAULT 0');
-} catch (e) { /* Column likely exists */ }
+} catch { /* Column likely exists */ }
 
 try {
     db.exec('ALTER TABLE analyses ADD COLUMN duration_ms INTEGER DEFAULT 0');
-} catch (e) { /* Column likely exists */ }
+} catch { /* Column likely exists */ }
 
 
 logger.info('Database initialized', { path: DB_PATH });

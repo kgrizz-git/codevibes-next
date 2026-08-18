@@ -1,34 +1,30 @@
 import js from "@eslint/js";
 import globals from "globals";
-import reactHooks from "eslint-plugin-react-hooks";
-import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 import importPlugin from "eslint-plugin-import-x";
 
 export default tseslint.config(
-  { ignores: ["dist", "codevibes-backend"] },
+  { ignores: ["dist", "node_modules"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ["**/*.{ts,tsx}"],
+    files: ["**/*.ts"],
     languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: globals.node,
     },
     plugins: {
-      "react-hooks": reactHooks,
-      "react-refresh": reactRefresh,
       import: importPlugin,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": "off",
-      "@typescript-eslint/no-explicit-any": "warn",
+      ...tseslint.configs.recommended.rules,
       "import/no-absolute-path": "error",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
   {
-    files: ["**/*.{ts,tsx}"],
+    files: ["**/*.ts"],
     rules: {
       complexity: ["warn", 10],
       "max-depth": ["warn", 4],
@@ -38,7 +34,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.test.{ts,tsx}", "**/*.config.{js,ts}", "**/*.setup.ts"],
+    files: ["**/*.test.ts", "**/*.config.ts", "**/*.setup.ts"],
     rules: {
       "max-lines": "off",
       complexity: "off",

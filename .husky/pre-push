@@ -1,0 +1,3 @@
+npm run typecheck
+npx vitest run --changed HEAD~1  # frontend smoke; backend vitest lands later
+# npm --prefix codevibes-backend run test -- --changed HEAD~1  # uncomment when backend vitest lands (Step 5)

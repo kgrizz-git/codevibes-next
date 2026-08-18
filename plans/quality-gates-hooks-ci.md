@@ -81,7 +81,7 @@
   }
   ```
   Backend-staged files then use only the backend config; root files use the root config. ⚠️ **Do NOT put both `*.{ts,tsx}` and `codevibes-backend/**/*.ts` in one config object** — lint-staged runs tasks for *every* matching glob (no dedup; README warns of race conditions on overlapping patterns), so backend files would be linted twice: once with the root config (which has no backend-relevant rules), once with the backend config. Ordering does **not** fix this; non-overlap or per-directory configs do. ⚠️ **lint-staged resolves binaries from the closest `node_modules/.bin/` to the config file** — the backend `lint-staged.config.js` runs `eslint`, so Step 0 (backend eslint devDependency) must complete first or the task fails with "eslint: command not found".
-- **Why `--config` is needed in the backend entry:** ESLint 9 flat-config resolution walks up from each linted file's directory — a backend file linted from the repo root would otherwise resolve the *root* `eslint.config.js`, not the backend one. `--config codevibes-backend/eslint.config.js` (relative to repo root, where lint-staged runs the task — CWD is always the git root) pins the right config.
+- **Why `--config` is needed in the backend entry:** ESLint 9 flat-config resolution walks up from each linted file's directory — a backend file linted from the repo root would otherwise resolve the *root* `eslint.config.js`, not the backend one. `--config eslint.config.js` (relative to the config file's directory, where lint-staged runs the task — CWD is the config file's directory, not the git root) pins the right config.
 - Only staged files are linted → fast. CI enforces the full repo.
 
 ### Absolute-path gate (pre-commit + CI)

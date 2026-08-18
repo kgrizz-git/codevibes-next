@@ -18,6 +18,9 @@ dist-ssr
 .env.*
 !.env.example
 
+# Package manager lockfile hygiene (standardize on npm)
+bun.lockb
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -31,3 +34,6 @@ dist-ssr
 
 # Temp / review artifacts
 tmp/
+
+# Coverage output
+coverage/

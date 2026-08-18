@@ -1,0 +1,10 @@
+gitleaks protect --staged
+npx lint-staged
+node scripts/check-file-size.mjs --staged
+
+# Static security analysis on changed TS/TSX files (skips if none staged or semgrep absent)
+if command -v semgrep >/dev/null 2>&1; then
+  if git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' | grep -q .; then
+    git diff --cached -z --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' | xargs -0 semgrep scan --config p/typescript --config p/javascript
+  fi
+fi

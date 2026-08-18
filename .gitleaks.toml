@@ -1,0 +1,7 @@
+# .gitleaks.toml
+[allowlist]
+paths = [
+  ".env.example",
+  "codevibes-backend/data/",
+  "tests/fixtures/",
+]

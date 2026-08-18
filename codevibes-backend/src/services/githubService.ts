@@ -8,7 +8,7 @@ import { categorizeFiles, filterFilesByPriority } from '../utils/fileFilter.js';
 import { logger } from '../utils/logger.js';
 
 // GitHub URL parsing regex
-const GITHUB_URL_REGEX = /github\.com\/([^\/]+)\/([^\/]+)/;
+const GITHUB_URL_REGEX = /github\.com\/([^/]+)\/([^/]+)/;
 
 /**
  * Parse a GitHub URL to extract owner and repo name
