@@ -53,17 +53,17 @@ jobs:
               --title "Upstream has $NEW_COUNT new commit(s) to review" \
               --body "New commits on ${UPSTREAM_REPO} (main) since the last check:
 
-$COMMITS
+          $COMMITS
 
-Review locally with:
-\`\`bash
-git fetch upstream && git log --oneline HEAD..upstream/main
-\`\`\`
+          Review locally with:
+          \`\`bash
+          git fetch upstream && git log --oneline HEAD..upstream/main
+          \`\`\`
 
-If useful, merge into this fork (or open a PR from a branch):
-\`\`bash
-git fetch upstream && git merge upstream/main
-\`\`\`"
+          If useful, merge into this fork (or open a PR from a branch):
+          \`\`bash
+          git fetch upstream && git merge upstream/main
+          \`\`\`"
           else
             echo "Upstream changes already present in main; recording SHA only."
           fi
