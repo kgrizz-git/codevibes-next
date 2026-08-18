@@ -124,6 +124,7 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
   ```sh
   npm run typecheck
   npx vitest run --changed HEAD~1  # frontend smoke; backend vitest lands later
+  # npm --prefix codevibes-backend run test -- --changed HEAD~1  # uncomment when backend vitest lands (Step 5)
   ```
   ⚠️ gitleaks is intentionally omitted from pre-push. During a push, the staging area is empty (`--staged` scans nothing), and `protect` without `--staged` scans the entire working tree including untracked files. Pre-commit (`protect --staged`) + CI (`detect` on full history) cover both cases. If you want pre-push secret scanning, use `gitleaks protect --log-opts="$2..$1"` to scan the commit range being pushed (the hook receives `<local-ref> <local-sha> <remote-ref> <remote-sha>` on stdin).
 
@@ -142,7 +143,7 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
 
 ---
 
-## Step 4 — Secret detection: gitleaks (pre-commit + pre-push + CI)
+## Step 4 — Secret detection: gitleaks (pre-commit + CI)
 
 **Recommendation: gitleaks.**
 
@@ -184,7 +185,7 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
   ```
   Without the setup file, `expect(...).toBeInTheDocument()` and other jest-dom matchers are undefined.
   (Alternative: add a `test` property directly inside `vite.config.ts` — works, but mixes build and test concerns.)
-- Backend: vitest `node` environment. **`better-sqlite3` needs native bindings and a DB file** — tests touching DB logic must use in-memory SQLite (`:memory:`) or fixtures/mocking. Plan test fixtures and a `setup.ts` before writing DB tests; don't hand-wave this.
+- Backend: vitest `node` environment. **`better-sqlite3` needs native bindings and a DB file** — tests touching DB logic must use in-memory SQLite (`:memory:`) or fixtures/mocking. Plan test fixtures and a `setup.ts` before writing DB tests; don't hand-wave this. Add `"test": "vitest run"` to `codevibes-backend/package.json` (currently has no `test` script — CI `test` job will fail without it).
 - Coverage config — **correct key is `coverage.thresholds` (plural)**. Each package needs its own `include` — the frontend config covers `src/**/*.{ts,tsx}`, the backend config covers its own `src/`:
   ```ts
   // in each package's vitest.config.ts
