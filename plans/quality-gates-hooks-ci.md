@@ -3,6 +3,8 @@
 **Repo:** codevibes-next (Vite/React/TS frontend + `codevibes-backend` Express/TS)
 **Current state:** No hooks. CI is only `upstream-check.yml`. No tests. ESLint exists **only at the root** — the backend has no ESLint config and no eslint devDependency, despite its `lint` script (`eslint src/**/*.ts`). Root `package.json` has **no `workspaces` field** — this is two independent packages, not a monorepo workspace setup.
 
+**Pre-flight cleanup required:** `codevibes-backend/data/codevibes.db-shm` and `codevibes-backend/data/codevibes.db-wal` are tracked in git. The `.gitignore` only excludes `*.db` and `*.sqlite`. These SQLite WAL files are regenerated constantly and may contain query text with tokens. Before enabling `gitleaks detect`, add `codevibes-backend/data/*.db-shm` and `codevibes-backend/data/*.db-wal` to `.gitignore` and run `git rm --cached` to untrack them. Similarly, `bun.lockb` is tracked — `git rm bun.lockb` and add it to `.gitignore` (see npm decision below).
+
 **Decision: npm.** Root has both `bun.lockb` and `package-lock.json`; backend has `package-lock.json` only. Delete `bun.lockb` — standardize on npm so both packages use the same lockfile format and CI only needs `actions/setup-node`.
 
 ---
@@ -17,9 +19,9 @@
 | @vitest/coverage-v8 | **4.1.11** | must exactly match vitest version | — |
 | eslint | 10.8.1 latest; repo on **^9.32.0** | keep 9.x unless choosing to migrate | typescript-eslint 8.67.0 supports eslint ^8.57\|\|^9\|\|^10, so both work |
 | typescript-eslint | **8.67.0** | `npm i -D typescript-eslint@^8.67.0` | requires TypeScript < 6.1 — repo has 5.8.3 ✓ |
-| eslint-plugin-import-x | latest | `npm i -D eslint-plugin-import-x` | drop-in replacement for `eslint-plugin-import` with proper ESLint 9 flat-config support; provides `import/no-absolute-path` |
-| gitleaks | **v8.30.1** | `brew install gitleaks`; CI: download pinned binary from `github.com/gitleaks/gitleaks/releases/tag/v8.30.1` | — |
-| semgrep | **v1.173.0** | `brew install semgrep` (or `pipx`); CI: pin `semgrep/semgrep:1.173.0` Docker image | — |
+| eslint-plugin-import-x | **4.17.1** | `npm i -D eslint-plugin-import-x@^4.17.1` | drop-in replacement for `eslint-plugin-import` with proper ESLint 9 flat-config support; provides `import/no-absolute-path` |
+| gitleaks | **v8.30.1** | `brew install gitleaks`; CI: download pinned binary from `github.com/gitleaks/gitleaks/releases/tag/v8.30.1` | ⚠️ Do NOT `npm i gitleaks` — the npm package is a squatter/placeholder, not the real tool |
+| semgrep | **v1.173.0** | `brew install semgrep` (or `pipx`); CI: pin `semgrep/semgrep:1.173.0` Docker image | ⚠️ Do NOT `npm i semgrep` — the npm package is a squatter/placeholder, not the real tool |
 | prettier | **3.9.6** | `npm i -D prettier@^3.9.6` | — |
 | jsdom | **30.0.1** | `npm i -D jsdom@^30.0.1` | — |
 | @testing-library/react | **16.3.2** | `npm i -D @testing-library/react@^16.3.2` | React ^18\|\|^19 — repo has 18.3.1 ✓ |
@@ -37,7 +39,7 @@
 | Linting | ESLint (root only today — **Step 0 adds backend ESLint**) | pre-commit (staged), CI |
 | Type checking | `tsc --noEmit` (per package, `-p <config>`) | pre-push, CI |
 | Complexity / line limits | ESLint core rules + small custom script | pre-commit (staged), CI |
-| Secret detection | **gitleaks** | pre-commit (staged), pre-push, CI |
+| Secret detection | **gitleaks** | pre-commit (staged), CI (history) |
 | Tests + coverage | **Vitest** + `@vitest/coverage-v8` (frontend); Vitest or `node:test` for backend | pre-push (smoke), CI (full + thresholds) |
 | Static security analysis | **semgrep** (native, no GH Action) | pre-commit (changed files), CI |
 | Build verification | `vite build` + backend `tsc` build | pre-push, CI |
@@ -79,7 +81,7 @@
   }
   ```
   Backend-staged files then use only the backend config; root files use the root config. ⚠️ **Do NOT put both `*.{ts,tsx}` and `codevibes-backend/**/*.ts` in one config object** — lint-staged runs tasks for *every* matching glob (no dedup; README warns of race conditions on overlapping patterns), so backend files would be linted twice: once with the root config (which has no backend-relevant rules), once with the backend config. Ordering does **not** fix this; non-overlap or per-directory configs do. ⚠️ **lint-staged resolves binaries from the closest `node_modules/.bin/` to the config file** — the backend `lint-staged.config.js` runs `eslint`, so Step 0 (backend eslint devDependency) must complete first or the task fails with "eslint: command not found".
-- **Why `--config` is needed in the backend entry:** ESLint 9 flat-config resolution walks up from each linted file's directory — a backend file linted from the repo root would otherwise resolve the *root* `eslint.config.js`, not the backend one. `--config codevibes-backend/eslint.config.js` (relative to the config file's dir, where lint-staged runs the task) pins the right config.
+- **Why `--config` is needed in the backend entry:** ESLint 9 flat-config resolution walks up from each linted file's directory — a backend file linted from the repo root would otherwise resolve the *root* `eslint.config.js`, not the backend one. `--config codevibes-backend/eslint.config.js` (relative to repo root, where lint-staged runs the task — CWD is always the git root) pins the right config.
 - Only staged files are linted → fast. CI enforces the full repo.
 
 ### Absolute-path gate (pre-commit + CI)
@@ -112,7 +114,7 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
 
 **Recommendation: husky v9.**
 
-- `npx husky@^9.1.7 init` (creates `.husky/`) and **add `"prepare": "husky"` to root `package.json`** — without it, hooks never activate after `npm install` (husky v9 uses `core.hooksPath`; the `prepare` script is the activation step). Husky is **repo-global** (hooks live in `.git/hooks` via `core.hooksPath`), so the root `prepare` is sufficient even though the backend is a separate package. A developer who runs `npm install` only in `codevibes-backend/` will not trigger hook activation — document in the project README that `npm install` must be run from the repo root at least once.
+- `npm i -D husky@^9.1.7 && npx husky init` (installs, then creates `.husky/`) and **add `"prepare": "husky"` to root `package.json`** — without it, hooks never activate after `npm install` (husky v9 uses `core.hooksPath`; the `prepare` script is the activation step). Husky is **repo-global** (hooks live in `.git/hooks` via `core.hooksPath`), so the root `prepare` is sufficient even though the backend is a separate package. A developer who runs `npm install` only in `codevibes-backend/` will not trigger hook activation — document in the project README that `npm install` must be run from the repo root at least once.
 - `pre-commit` hook — **gitleaks runs FIRST, before lint-staged mutates the index** (lint-staged `--fix` re-stages modified files; scanning post-fix content can miss/obscure patterns):
   ```sh
   gitleaks protect --staged
@@ -121,11 +123,11 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
 - `pre-push` hook:
   ```sh
   npm run typecheck
-  npx vitest run --changed  # smoke only; full coverage lives in CI
+  npx vitest run --changed HEAD~1  # frontend smoke; backend vitest lands later
   ```
   ⚠️ gitleaks is intentionally omitted from pre-push. During a push, the staging area is empty (`--staged` scans nothing), and `protect` without `--staged` scans the entire working tree including untracked files. Pre-commit (`protect --staged`) + CI (`detect` on full history) cover both cases. If you want pre-push secret scanning, use `gitleaks protect --log-opts="$2..$1"` to scan the commit range being pushed (the hook receives `<local-ref> <local-sha> <remote-ref> <remote-sha>` on stdin).
 
-  `vitest run --changed` compares against HEAD (committed state), not the working tree. On a first push of a new branch, if no commits differ from the tracking ref, it may pass vacuously with zero tests. This is acceptable for a smoke gate; CI is the real safety net.
+  `vitest run --changed` compares against HEAD (committed state), not the working tree. On a fresh branch with no reachable ancestor or shallow history, it can **error** ("no previous commit") rather than pass vacuously. Use `--changed HEAD~1` as a safer default, or guard with `git rev-parse HEAD~1 >/dev/null 2>&1` before running. Pre-push is a smoke gate only; CI is the real safety net.
 - **Per-tool flag cheat-sheet (no `--prefix` — that's npm-only):** eslint → `--config <path>`; tsc → `-p <tsconfig>`; vitest → `--config <path>` or `-c`; gitleaks → `--path <dir>`. Run hooks from repo root and reference configs by path.
 
 ---
@@ -153,6 +155,7 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
   ```
   (TOML uses double-quoted strings only.)
 - **`protect` vs `detect` — they are NOT equivalent gates:** `gitleaks protect` scans working-tree changes (local-only; misses secrets already committed); `gitleaks detect` scans repo history (the real safety net, CI-only). Hooks use `protect`; CI must run `detect`.
+- **Pre-flight: run `gitleaks detect` on current history before enabling it as a required CI check.** Triage findings — if secrets exist in history, remediate (rotate credentials, add `.gitleaksignore` for false positives) before making `detect` a blocking gate.
 
 ---
 
@@ -169,9 +172,17 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
   import { defineConfig, mergeConfig } from 'vitest/config'
   import viteConfig from './vite.config'
   export default mergeConfig(viteConfig, defineConfig({
-    test: { environment: 'jsdom' },
+    test: {
+      environment: 'jsdom',
+      setupFiles: ['./vitest.setup.ts'],
+    },
   }))
   ```
+  ```ts
+  // vitest.setup.ts
+  import '@testing-library/jest-dom/vitest'
+  ```
+  Without the setup file, `expect(...).toBeInTheDocument()` and other jest-dom matchers are undefined.
   (Alternative: add a `test` property directly inside `vite.config.ts` — works, but mixes build and test concerns.)
 - Backend: vitest `node` environment. **`better-sqlite3` needs native bindings and a DB file** — tests touching DB logic must use in-memory SQLite (`:memory:`) or fixtures/mocking. Plan test fixtures and a `setup.ts` before writing DB tests; don't hand-wave this.
 - Coverage config — **correct key is `coverage.thresholds` (plural)**. Each package needs its own `include` — the frontend config covers `src/**/*.{ts,tsx}`, the backend config covers its own `src/`:
@@ -226,7 +237,7 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
         'max-depth': ['warn', 4],
         'max-lines-per-function': ['warn', 80],
         'max-nested-callbacks': ['warn', 3],
-        'max-lines': ['off', { max: 300 }],
+        'max-lines': ['warn', { max: 300 }],
       },
     },
     {
@@ -237,6 +248,7 @@ Note: `eslint-plugin-import-x` has **no named `noAbsolutePath` export** — flat
   ```
 - Custom script `scripts/check-file-size.sh` (node script preferred): fail on any file > 400 lines (excluding configs/fixtures/tests). Runs on **staged files** in pre-commit, **whole repo** in CI.
 - Before enabling: measure the 95th percentile of current file lengths; set initial thresholds there or budget a cleanup commit, or the first run fails on existing code.
+- **Flip to `error`**: once a cleanup commit lands and the 95th percentile is below the thresholds, change `warn` → `error` in a follow-up commit. Until then, complexity rules are advisory only and don't gate merges.
 
 ---
 
@@ -249,18 +261,23 @@ Shared setup: `actions/checkout` with **`fetch-depth: 0`** (needed if any job us
 - uses: actions/checkout@v4
   with: { fetch-depth: 0 }
 - uses: actions/setup-node@v4
-  with: { node-version: 22, cache: 'npm' }
+  with:
+    node-version: 22
+    cache: 'npm'
+    cache-dependency-path: |
+      package-lock.json
+      codevibes-backend/package-lock.json
 - run: npm ci
 - run: npm ci --prefix codevibes-backend
 ```
-`actions/setup-node` has **built-in npm caching** (`cache: 'npm'`) — it caches `~/.npm` based on `package-lock.json` hash, so no separate `actions/cache` step is needed. Backend deps need a separate install since there are no workspaces. Also add `.nvmrc` (`22`) to the repo so local dev matches CI.
+`actions/setup-node` has **built-in npm caching** (`cache: 'npm'`) — `cache-dependency-path` accepts a list so both lockfiles are keyed. Also create `.nvmrc` (`22`) in the repo root so local dev matches CI.
 
 **Grouped jobs (lighter than 8 separate checks — branch protection requires 4):**
 
 | Job | Contents |
 |---|---|
 | `quality` | lint (root + backend) + `tsc --noEmit` both packages — use separate named steps so the Actions UI shows which failed: `- name: Lint` / `- name: Typecheck` |
-| `test` | `vitest run --coverage` both packages (thresholds enforced; per-file `coverage.include` scoping) |
+| `test` | `npx vitest run --coverage` (root/frontend) + `npm --prefix codevibes-backend run test -- --coverage` (each with its own `vitest.config.ts` and `coverage.include`) |
 | `build` | `vite build` + backend `tsc` build |
 | `security` | gitleaks `detect` (full history) + semgrep `ci` |
 
@@ -284,16 +301,17 @@ Branch protection: require all 4 jobs to pass on PRs. That's 4 required checks, 
 ## Execution order (recommended sequencing)
 
 1. **Step 0** — backend ESLint config + devDeps (unblocks lint wiring).
-2. **Step 1** — lint-staged + ESLint (pre-commit).
-3. **Step 3** — typecheck: add the root script + run it locally (pre-push hook lands with Step 2; it also rides in the CI `quality` job — no separate CI work needed).
-4. **Step 8 skeleton** — CI `quality` + `build` jobs so CI exists from day one.
-5. **Step 2** — husky wiring (pre-commit: gitleaks → lint-staged; pre-push: typecheck + smoke tests) + `prepare` script.
-6. **Step 4** — gitleaks (hooks + CI `detect` job).
-7. **Step 7** — complexity/line limits (staged → whole repo).
-8. **Step 5 (Vite upgrade)** — Vite 5→6 as its own commit; smoke-test `vite build` before proceeding.
-9. **Step 5 (Vitest)** — Vitest + coverage (no test infra exists; backend needs in-memory SQLite/fixtures).
-10. **Step 6** — semgrep.
-11. **Step 9** — extras.
+2. **Pre-flight cleanup** — untrack SQLite WAL/SHM files (`git rm --cached codevibes-backend/data/*.db-shm codevibes-backend/data/*.db-wal`), add to `.gitignore`, delete and ignore `bun.lockb`. Commit before enabling `gitleaks detect`.
+3. **Step 1** — lint-staged + ESLint (pre-commit).
+4. **Step 3** — typecheck: add the root script + run it locally (pre-push hook lands with Step 2; it also rides in the CI `quality` job — no separate CI work needed).
+5. **Step 8 skeleton** — CI `quality` + `build` jobs so CI exists from day one.
+6. **Step 2** — husky wiring (pre-commit: gitleaks → lint-staged; pre-push: typecheck + smoke tests) + `prepare` script.
+7. **Step 4** — gitleaks (hooks + CI `detect` job). Run `gitleaks detect` on existing history first; triage or remediate findings before making it a required check.
+8. **Step 7** — complexity/line limits (staged → whole repo). Rules start as `warn`; flip to `error` after cleanup commit.
+9. **Step 5 (Vite upgrade)** — Vite 5→6 as its own commit; smoke-test `vite build` before proceeding.
+10. **Step 5 (Vitest)** — Vitest + coverage (no test infra exists; backend needs in-memory SQLite/fixtures).
+11. **Step 6** — semgrep.
+12. **Step 9** — extras.
 
 ## Open decisions to confirm
 
