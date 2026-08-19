@@ -20,8 +20,8 @@ const EXCLUDE = new Set([
   "public",
 ]);
 // Docs under plans/ legitimately discuss machine-specific path patterns
-// (e.g. the quality-gates plan describing the /Users/ rule itself), so the
-// absolute-path gate is skipped there. The line-count gate still applies.
+// (e.g. the quality-gates plan describing the absolute-path rule itself), so
+// the absolute-path gate is skipped there. The line-count gate still applies.
 const ABS_PATH_EXCLUDE = new Set(["plans"]);
 
 function listFiles(staged) {
