@@ -40,8 +40,9 @@ describe("decrypt", () => {
     expect(decrypt(encrypt(plaintext))).toBe(plaintext);
   });
 
-  it("returns legacy plaintext unchanged", () => {
-    expect(decrypt("legacy-token")).toBe("legacy-token");
+  it("returns known legacy plaintext unchanged", () => {
+    expect(decrypt("ghp_legacyToken123")).toBe("ghp_legacyToken123");
+    expect(decrypt("sk-legacykey123")).toBe("sk-legacykey123");
   });
 
   it("returns legacy plaintext with colons unchanged (e.g. URL)", () => {
@@ -52,6 +53,32 @@ describe("decrypt", () => {
 
   it("returns empty string unchanged (symmetry with encrypt)", () => {
     expect(decrypt("")).toBe("");
+  });
+
+  it("throws on a damaged envelope with a removed delimiter", () => {
+    const parts = encrypt("secret").split(":");
+    const removedDelimiter = `${parts[0]}:${parts[1]}${parts[2]}`;
+    expect(removedDelimiter.split(":")).toHaveLength(2);
+    expect(() => decrypt(removedDelimiter)).toThrow("tampered or corrupt");
+  });
+
+  it("throws on a damaged envelope with an added delimiter", () => {
+    const parts = encrypt("secret").split(":");
+    const addedDelimiter = `${parts[0]}:${parts[1]}::${parts[2]}`;
+    expect(addedDelimiter.split(":")).toHaveLength(4);
+    expect(() => decrypt(addedDelimiter)).toThrow("tampered or corrupt");
+  });
+
+  it("throws on single-part non-legacy garbage (e.g. truncated envelope)", () => {
+    expect(() => decrypt(encrypt("secret").split(":")[2])).toThrow(
+      "tampered or corrupt"
+    );
+  });
+
+  it("throws on unknown non-legacy values instead of echoing them", () => {
+    expect(() => decrypt("plain-garbage")).toThrow("tampered or corrupt");
+    expect(() => decrypt("a:b")).toThrow("tampered or corrupt");
+    expect(() => decrypt("a:b:c:d")).toThrow("tampered or corrupt");
   });
 
   it("throws on tampered auth tag instead of returning the input", () => {
@@ -173,10 +200,18 @@ describe("decryptTokenField (per-field isolation)", () => {
     expect(user.github_token).toBe("");
   });
 
-  it("leaves legacy plaintext untouched", () => {
-    const user = makeUser({ github_token: "legacy-plain" });
+  it("leaves known legacy plaintext untouched", () => {
+    const user = makeUser({ github_token: "ghp_legacy-plain" });
     decryptTokenField(user, "github_token");
-    expect(user.github_token).toBe("legacy-plain");
+    expect(user.github_token).toBe("ghp_legacy-plain");
+  });
+
+  it("nulls a damaged envelope with a removed delimiter", () => {
+    const parts = encrypt("secret").split(":");
+    const damaged = `${parts[0]}:${parts[1]}${parts[2]}`;
+    const user = makeUser({ github_token: damaged });
+    decryptTokenField(user, "github_token");
+    expect(user.github_token).toBeNull();
   });
 });
 

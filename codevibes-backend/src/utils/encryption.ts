@@ -70,51 +70,71 @@ export function encrypt(plaintext: string): string {
 }
 
 /**
+ * Legacy plaintext formats that predate envelope encryption. Only values
+ * matching these patterns are echoed back unchanged; every other non-empty
+ * value that is not a valid envelope is treated as tampered or corrupt.
+ */
+const LEGACY_PATTERNS = [
+    /^https?:\/\//i, // URLs
+    /^ghp_/, // GitHub classic PATs
+    /^gho_/, // GitHub OAuth access tokens
+    /^ghu_/, // GitHub user-to-server tokens
+    /^ghs_/, // GitHub server-to-server tokens
+    /^ghr_/, // GitHub refresh tokens
+    /^github_pat_/, // GitHub fine-grained PATs
+    /^sk-/, // DeepSeek API keys
+];
+
+function isLegacyPlaintext(text: string): boolean {
+    return LEGACY_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
  * Decrypt an encrypted string using AES-256-GCM
  * @param encryptedText Format: iv:authTag:ciphertext
  * @returns Decrypted plaintext
- * @throws If the input has encrypted shape (3 colon parts) but is malformed or
- *         fails decryption (tampered/corrupt). Genuine legacy input (no
- *         encrypted shape) is returned unchanged.
+ * @throws If the input is not a valid envelope and not a known legacy
+ *         plaintext format (e.g. a damaged envelope with a removed or added
+ *         delimiter, or invalid-hex parts). Known legacy token formats and
+ *         empty strings are returned unchanged.
  */
 export function decrypt(encryptedText: string): string {
     // Legacy/unencrypted data passes through unchanged; empty strings too.
     if (!encryptedText) return encryptedText;
 
-    if (!looksEncrypted(encryptedText)) {
-        // 3-part strings that fail strict format validation are tampered or
-        // corrupt, not legacy data — never echo them back as plaintext.
-        if (encryptedText.split(':').length === 3) {
+    if (looksEncrypted(encryptedText)) {
+        const [ivHex, authTagHex, ciphertext] = encryptedText.split(':');
+
+        const iv = Buffer.from(ivHex, 'hex');
+        const authTag = Buffer.from(authTagHex, 'hex');
+
+        // Defense in depth: re-assert lengths at this boundary, don't trust the
+        // classifier alone (decrypt is the security boundary).
+        if (iv.length !== IV_LENGTH || authTag.length !== AUTH_TAG_LENGTH) {
             throw new Error('Failed to decrypt: data may be tampered or corrupt');
         }
-        return encryptedText;
+
+        try {
+            const decipher = crypto.createDecipheriv(ALGORITHM, KEY_BUFFER, iv, { authTagLength: AUTH_TAG_LENGTH });
+            decipher.setAuthTag(authTag);
+
+            let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+            decrypted += decipher.final('utf8');
+
+            return decrypted;
+        } catch (err) {
+            // Log the error type/message for forensics, never the ciphertext.
+            const errorType = err instanceof Error ? err.message : String(err);
+            console.warn(`Failed to decrypt (data may be tampered or corrupt): ${errorType}`);
+            throw new Error('Failed to decrypt: data may be tampered or corrupt', { cause: err });
+        }
     }
 
-    const [ivHex, authTagHex, ciphertext] = encryptedText.split(':');
-
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(authTagHex, 'hex');
-
-    // Defense in depth: re-assert lengths at this boundary, don't trust the
-    // classifier alone (decrypt is the security boundary).
-    if (iv.length !== IV_LENGTH || authTag.length !== AUTH_TAG_LENGTH) {
-        throw new Error('Failed to decrypt: data may be tampered or corrupt');
-    }
-
-    try {
-        const decipher = crypto.createDecipheriv(ALGORITHM, KEY_BUFFER, iv, { authTagLength: AUTH_TAG_LENGTH });
-        decipher.setAuthTag(authTag);
-
-        let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
-        decrypted += decipher.final('utf8');
-
-        return decrypted;
-    } catch (err) {
-        // Log the error type/message for forensics, never the ciphertext.
-        const errorType = err instanceof Error ? err.message : String(err);
-        console.warn(`Failed to decrypt (data may be tampered or corrupt): ${errorType}`);
-        throw new Error('Failed to decrypt: data may be tampered or corrupt', { cause: err });
-    }
+    // Not a valid envelope. Only known legacy plaintext formats pass through;
+    // anything else (e.g. damaged ciphertext with a removed/added delimiter)
+    // is treated as tampered or corrupt, never echoed back as a token.
+    if (isLegacyPlaintext(encryptedText)) return encryptedText;
+    throw new Error('Failed to decrypt: data may be tampered or corrupt');
 }
 
 /**
