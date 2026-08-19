@@ -47,10 +47,10 @@ extraction untouched (they're provider-agnostic). Update `types/index.ts`
 
 > **Step ordering note (review §2.1):** Step 1's `streamAnalysis` calls
 > `calculateCost` (deepseekService.ts:871). Do **not** land Step 1 alone with the
-> old 2-arg signature and change it in Step 2 — broken intermediate state. Steps
-> 1+2 are atomic: Step 1 uses the **new** `calculateCost` signature from the
-> start, backed by a temporary hardcoded DeepSeek provider object until the
-> registry lands in Step 2.
+> old 2-arg signature — broken intermediate state. Steps 1+2 are atomic: Step 1
+> uses the **new** `calculateCost` signature from the start, backed by a
+> temporary hardcoded DeepSeek provider object until the registry lands in
+> Step 2.
 >
 > **Legacy preservation (from review E1 — the plan's most important runtime-safety
 > property):** `deepseekService.streamAnalysis` (and its SSE parser) must remain
@@ -419,8 +419,7 @@ provider — as a release gate, not the sole verification.
 
 - README/setup: env-var contract + provider picker (self-hosters).
 - `aiProvider.ts` header comment: the OpenAI-compatible contract + the adapter
-  boundary future non-OpenAI providers must implement (one paragraph so the next
-  dev doesn't re-couple).
+  boundary future non-OpenAI providers must implement.
 - API docs: removed key endpoint (`ApiReferencePage`), new
   `AnalyzeRequest.provider`/`model` fields.
 - Link from the "explore how codevibes works" TO_DO doc to this plan.
