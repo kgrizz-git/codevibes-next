@@ -154,7 +154,10 @@ tested; `baseUrl`+`endpointPath` concat never produces `//`; legacy
 ### Step 2 — Provider registry + pricing
 
 Add `providers.ts` with DeepSeek as default; move pricing into provider entries
-(config model in companion doc). `calculateCost` **changes signature** to
+(config model in companion doc). Add `GET /api/providers` endpoint returning the
+registry (provider id, label, models, auth requirements, pricing metadata) so the
+frontend model selector consumes the **same** source the server validates against —
+never a separate hardcoded list. `calculateCost` **changes signature** to
 `calculateCost(inputTokens, outputTokens, inputCostPerMillion, outputCostPerMillion)`
 — a **deliberate breaking change across 8 backend call sites** (analysisService.ts
 ×5, deepseekService.ts ×2, tokenCounter.ts `getFullEstimate` ×1) **plus 3
@@ -164,7 +167,7 @@ frontend sites** that re-hardcode `(tokens/1e6) * 0.14`: `AnalyzePage.tsx:391`
 commit; no default that silently falls back to DeepSeek pricing. **The frontend
 must stop computing cost itself** — the `complete` SSE event already carries
 server-computed `cost`/`tokensUsed`; the three display/persist sites consume that
-(extended per Step 6 with `provider`, `model`, `pricingStatus`) — single source
+(extended per Step 6 with `provider`, `model`, `pricingStatus`, `costBasis`) — single source
 of truth.
 
 **Done when:** every backend call site passes provider costs; a unit test asserts
@@ -250,9 +253,12 @@ DeepSeek keys still load after the store migration.
 ### Step 4 — Frontend settings + full DeepSeek-brand surface
 *(depends on Step 3: provider picker consumes the unified key store)*
 
-Generalize `SettingsModal.tsx` + `api.ts` (`saveDeepSeekKey` → per-provider save)
-into a provider picker: provider dropdown, model selector, key field, "get key"
-link, and a "test key" button that calls the wired `validateApiKey`. **The model
+Rebuild `SettingsModal.tsx` into a provider picker that reads providers from
+`GET /api/providers` (Step 2) and keys from the unified client store (Step 3):
+provider dropdown, model selector, key field, "get key" link, and a "test key"
+button that calls the wired `validateApiKey`. Keys are written to the client
+store only — no server-side key persistence (the dead `saveDeepSeekKey` endpoint
+was removed in Step 3). **The model
 selector's options come from the provider's `models` list in the registry — the
 *same* source the server validates against (Step 5), never a separate hardcoded
 list.** Persist chosen provider + key. Cost estimates show which
@@ -338,8 +344,8 @@ place (per-request).
 - Backend: expose `pricingStatus` (`current` | `stale` | `unknown`) + `pricingAsOf`
   per provider in the estimate/complete payloads (from the registry, cheap — no
   network).
-- **Persist provider/model in the `analyses` row** (database.ts:42-57 has
-  `cost`/`tokens_used` but no provider/model) — add `provider`, `model`, and a
+- **Persist provider/model/costBasis in the `analyses` row** (database.ts:42-57 has
+  `cost`/`tokens_used` but no provider/model/costBasis) — add `provider`, `model`, and a
   cost-basis flag (`metered` | `estimated`) columns, following the repo's informal
   migration pattern (`CREATE TABLE IF NOT EXISTS` + `try { ALTER TABLE } catch`,
   database.ts:64-71). `saveAnalysis` + history display (`ResultsPage`) surface
@@ -352,7 +358,7 @@ place (per-request).
   `AnalyzePage`/`ResultsPage` estimate cards and the Settings provider picker;
   "pricing unknown" states show token counts + "cost N/A" (never a fabricated
   dollar figure). The `complete` event's `cost`/`tokensUsed` + new
-  `provider`/`model`/`pricingStatus` are the single source for the three
+  `provider`/`model`/`pricingStatus`/`costBasis` are the single source for the three
   display/persist sites enumerated in Step 2.
 
 **Done when:** staleness logic unit-tested; local `npm run check-pricing` passes
