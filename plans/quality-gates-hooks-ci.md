@@ -1,5 +1,10 @@
 # Plan: Pre-commit / Pre-push Hooks + CI Quality Gates
 
+> **Historical planning document** — a dated pre-implementation snapshot written
+> 2026-08-18. All steps have since been implemented (hooks, lint, typecheck,
+> tests, CI, security scans; see PR #8). The "Current state" line below
+> describes the repo *before* that work and is intentionally not updated.
+
 **Repo:** codevibes-next (Vite/React/TS frontend + `codevibes-backend` Express/TS)
 **Current state:** No hooks. CI is only `upstream-check.yml`. No tests. ESLint exists **only at the root** — the backend has no ESLint config and no eslint devDependency, despite its `lint` script (`eslint src/**/*.ts`). Root `package.json` has **no `workspaces` field** — this is two independent packages, not a monorepo workspace setup.
 
@@ -20,7 +25,7 @@
 | eslint | 10.8.1 latest; repo on **^9.32.0** | keep 9.x unless choosing to migrate | typescript-eslint 8.67.0 supports eslint ^8.57\|\|^9\|\|^10, so both work |
 | typescript-eslint | **8.67.0** | `npm i -D typescript-eslint@^8.67.0` | requires TypeScript < 6.1 — repo has 5.8.3 ✓ |
 | eslint-plugin-import-x | **4.17.1** | `npm i -D eslint-plugin-import-x@^4.17.1` | drop-in replacement for `eslint-plugin-import` with proper ESLint 9 flat-config support; provides `import/no-absolute-path` |
-| gitleaks | **v8.30.1** | `brew install gitleaks`; CI: download pinned binary from `github.com/gitleaks/gitleaks/releases/tag/v8.30.1` | ⚠️ Do NOT `npm i gitleaks` — the npm package is a squatter/placeholder, not the real tool |
+| gitleaks | **v8.30.1** | `brew install gitleaks`; CI: download pinned binary from `github.com/gitleaks/gitleaks/releases/tag/v8.30.1`, verified against the release's official `gitleaks_8.30.1_checksums.txt` before extraction | ⚠️ Do NOT `npm i gitleaks` — the npm package is a squatter/placeholder, not the real tool |
 | semgrep | **v1.173.0** | `brew install semgrep` (or `pipx`); CI: pin `semgrep/semgrep:1.173.0` Docker image | ⚠️ Do NOT `npm i semgrep` — the npm package is a squatter/placeholder, not the real tool |
 | prettier | **3.9.6** | `npm i -D prettier@^3.9.6` | — |
 | jsdom | **30.0.1** | `npm i -D jsdom@^30.0.1` | — |

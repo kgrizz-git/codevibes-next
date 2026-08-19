@@ -46,16 +46,20 @@ for (const file of listFiles(staged)) {
 
   // Line-count gate (all files).
   const content = readFileSync(file, "utf8");
-  const lineCount = content.split("\n").length;
+  const lines = content.split("\n");
+  // A trailing newline produces one empty trailing item; drop it so
+  // "a\n" counts as 1 line while "a" (no newline) and "" keep their counts.
+  const lineCount = content.endsWith("\n") ? lines.length - 1 : lines.length;
   if (lineCount > MAX_LINES) {
     console.error(`✖ ${file}: ${lineCount} lines exceeds limit of ${MAX_LINES}`);
     failures++;
   }
 
-  // Absolute-path gate (non-TS/TSX only — TS/TSX handled by eslint import/no-absolute-path).
+  // Absolute-path gate (all files). TS/TSX imports are additionally covered
+  // by eslint import/no-absolute-path; this scan catches string values.
   // Boundary excludes letters, digits, _, ., /, and - so quoted, assigned,
   // CSS url(), and JSON values match while URLs and plain words do not.
-  if (!/\.(ts|tsx)$/.test(file)) {
+  {
     const absMatch = content.match(/(^|[^A-Za-z0-9_.\/-])(\/Users\/|\/home\/|[A-Za-z]:\\)/);
     if (absMatch) {
       console.error(`✖ ${file}: machine-specific absolute path detected: ${absMatch[2]}`);

@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { encrypt, decrypt, isEncrypted, looksEncrypted } from "./encryption.js";
 import { decryptTokenField, encryptToken, type User } from "./database.js";
 
@@ -160,6 +160,11 @@ describe("encryptToken (storage normalization)", () => {
     expect(decrypt(stored as string)).toBe("ghp_abc");
   });
 
+  it("trims surrounding whitespace before encrypting", () => {
+    const stored = encryptToken("  ghp_abc  ");
+    expect(decrypt(stored as string)).toBe("ghp_abc");
+  });
+
   it("normalizes empty/whitespace tokens to null (never plaintext '')", () => {
     expect(encryptToken("")).toBeNull();
     expect(encryptToken("   ")).toBeNull();
@@ -227,9 +232,8 @@ describe("startup key validation", () => {
     vi.resetModules();
   });
 
-  afterAll(() => {
-    delete process.env.ENCRYPTION_KEY;
-    delete process.env.NODE_ENV;
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   async function importEncryption(): Promise<typeof import("./encryption.js")> {
@@ -237,40 +241,40 @@ describe("startup key validation", () => {
   }
 
   it("throws in production when the key is missing", async () => {
-    process.env.NODE_ENV = "production";
-    delete process.env.ENCRYPTION_KEY;
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ENCRYPTION_KEY", "");
     await expect(importEncryption()).rejects.toThrow(/ENCRYPTION_KEY/);
   });
 
   it("throws in production for a short key", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.ENCRYPTION_KEY = "abcd";
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ENCRYPTION_KEY", "abcd");
     await expect(importEncryption()).rejects.toThrow(/ENCRYPTION_KEY/);
   });
 
   it("throws in production for a non-hex key", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.ENCRYPTION_KEY = "zz".repeat(32);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ENCRYPTION_KEY", "zz".repeat(32));
     await expect(importEncryption()).rejects.toThrow(/ENCRYPTION_KEY/);
   });
 
   it("throws in production for an overlong key", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.ENCRYPTION_KEY = VALID_KEY + "00";
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ENCRYPTION_KEY", VALID_KEY + "00");
     await expect(importEncryption()).rejects.toThrow(/ENCRYPTION_KEY/);
   });
 
   it("accepts an exact 64-hex-char key in production", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.ENCRYPTION_KEY = VALID_KEY;
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ENCRYPTION_KEY", VALID_KEY);
     const mod = await importEncryption();
     const ciphertext = mod.encrypt("prod-secret");
     expect(mod.decrypt(ciphertext)).toBe("prod-secret");
   });
 
   it("uses an ephemeral dev key when unset outside production", async () => {
-    delete process.env.NODE_ENV;
-    delete process.env.ENCRYPTION_KEY;
+    vi.stubEnv("NODE_ENV", "");
+    vi.stubEnv("ENCRYPTION_KEY", "");
     const mod = await importEncryption();
     const ciphertext = mod.encrypt("dev-secret");
     expect(mod.decrypt(ciphertext)).toBe("dev-secret");

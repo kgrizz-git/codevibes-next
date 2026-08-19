@@ -89,10 +89,11 @@ export interface User {
 
 /**
  * Normalize a token for storage: empty/whitespace values become null (no
- * plaintext '' rows), non-empty values are encrypted.
+ * plaintext '' rows), non-empty values are trimmed and encrypted.
  */
 export function encryptToken(value: string | null | undefined): string | null {
-    return value && value.trim() ? encrypt(value) : null;
+    const trimmed = value?.trim();
+    return trimmed ? encrypt(trimmed) : null;
 }
 
 /**

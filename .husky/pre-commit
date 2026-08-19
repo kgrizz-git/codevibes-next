@@ -1,3 +1,6 @@
+#!/usr/bin/env sh
+set -e
+
 # Secret scan (skips with a notice if gitleaks is not installed — CI still enforces it)
 if command -v gitleaks >/dev/null 2>&1; then
   gitleaks protect --staged
