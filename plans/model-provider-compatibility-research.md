@@ -1,11 +1,12 @@
 # Research: Model / Provider Compatibility (evidence for the plan)
 
 > **Companion to `plans/model-provider-compatibility.md`** (the actionable plan,
-> status NEEDS REVIEW, Rev 5). This doc is the verified research and design
-> evidence the plan stands on: how the AI call works today, facts corrected during
-> review, provider config model, env-var contract, pricing-freshness design,
-> risks/edge cases, and candidate-provider research. File references verified
-> 2026-08-19; updated for the round-3 (2026-08-19T14-22) review.
+> status NEEDS REVIEW, Rev 6 — **all open decisions resolved**). This doc is the
+> verified research and design evidence the plan stands on: how the AI call works
+> today, facts corrected during review, provider config model, env-var contract,
+> pricing-freshness design, risks/edge cases, and candidate-provider research.
+> File references verified 2026-08-19; updated for the round-3
+> (2026-08-19T14-22) review.
 
 ---
 
