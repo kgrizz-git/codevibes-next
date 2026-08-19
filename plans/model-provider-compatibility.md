@@ -77,6 +77,8 @@ A provider entry carries:
 | `maxTokens` | `8000` | optional per-provider cap; must not exceed what the model supports (see §2.1) |
 | `inputCostPerMillion` | `0.14` | feeds `calculateCost` |
 | `outputCostPerMillion` | `0.28` | feeds `calculateCost` |
+| `pricingAsOf` | `2026-08-19` | date pricing was last verified; drives staleness flags (see "Pricing freshness") |
+| `pricingSource` | `https://api-docs.deepseek.com/quick_start/pricing` | where the numbers were verified against; machine-readable for a subset (OpenRouter `/api/v1/models`) |
 | `apiKeyLink` | `https://platform.deepseek.com/` | settings UI hint |
 | `streamingUsage` | `true` | whether the API returns `usage` on the stream (see §2.3) |
 
@@ -96,6 +98,42 @@ Config lives in a single backend module (`providers.ts` + `providerRegistry`,
 - `AI_BASE_URL` must be a full base (e.g. `http://localhost:11434/v1`); the client
   appends `/chat/completions` per the baseUrl contract above. Document this exact
   contract in README; it is the #1 self-hoster footgun.
+
+### Pricing freshness (staleness detection)
+
+Cost estimates are only as good as the pricing data behind them, so the registry
+records **when** each provider's pricing was verified (`pricingAsOf` + a
+`pricingSource` URL) and the system treats that as a first-class concern:
+
+- **Pricing status** for a provider is derived: `current` (verified within
+  `PRICING_STALE_AFTER_DAYS`, default 90), `stale` (older), or `unknown`
+  (no `pricingAsOf`, e.g. env-override `custom` provider where costs come from
+  `AI_INPUT_COST`/`AI_OUTPUT_COST`).
+- **User-visible flags (keep the estimates, label them honestly):** cost figures
+  shown in estimates/results carry a badge — "Pricing verified 2026-08-19",
+  "Pricing may be out of date (verified >90d ago)", or "Pricing unknown —
+  estimate only". We do **not** discard cost estimates when pricing is stale or
+  unknown: the numbers are still directionally useful, but they must never be
+  presented as authoritative. Estimates already distinguish "metered" (real
+  `usage` from the API) vs "estimated" (token-count estimate) per §2.3; the
+  pricing badge is an orthogonal axis layered on top.
+- **Metered-cost exception:** if a provider reports real `usage` and real
+  per-token cost is unknown (e.g. Ollama local), show the metered token counts
+  and "cost N/A — self-hosted/local" rather than fabricating a dollar figure.
+- **CI check (scheduled):** a GitHub Actions cron workflow (e.g. weekly,
+  `pricing-check.yml`) runs `scripts/check-pricing.mjs` which:
+  - For providers with **machine-readable** pricing (OpenRouter `/api/v1/models`
+    returns per-model cost metadata): fetches live numbers, diffs against the
+    registry, and opens a PR (or fails + opens an issue) on drift so a human can
+    update `inputCostPerMillion`/`outputCostPerMillion` + `pricingAsOf`.
+  - For providers with **page-only** pricing (DeepSeek, OpenAI, Anthropic, ...):
+    can't diff automatically — the script instead fails/opens an issue when any
+    provider's `pricingAsOf` exceeds the staleness threshold ("pricing review
+    due for provider X — check `pricingSource`"), which is the manual-review
+    nudge. The workflow is allowed to fail; it's informational, not a merge gate.
+  - The script is also runnable locally (`npm run check-pricing`) so pricing
+    updates are a deliberate, recorded act: you bump the numbers **and** the date
+    in one commit.
 
 ---
 
@@ -187,6 +225,26 @@ the default; existing stored DeepSeek keys still load.
 **Done when:** docs updated; tests green (§4); one second provider validated and
 recorded.
 
+### Step 6 — Pricing freshness: CI check + UI flags
+
+- Add `scripts/check-pricing.mjs` (runnable locally + in CI) implementing the
+  pricing-freshness logic above: machine-readable diff for OpenRouter, staleness
+  check (`pricingAsOf` age vs `PRICING_STALE_AFTER_DAYS`, default 90) for all
+  providers, clear exit codes/messages.
+- Add `pricing-check.yml` cron (weekly) running the script; on findings it opens
+  an issue (or PR for machine-diffable drift). Informational, not a merge gate.
+- Backend: expose `pricingStatus` (`current` | `stale` | `unknown`) + `pricingAsOf`
+  per provider in the estimate/complete payloads (from the registry, cheap — no
+  network).
+- Frontend: render the status badge next to cost figures in
+  `AnalyzePage`/`ResultsPage` estimate cards and the Settings provider picker;
+  "pricing unknown" states show token counts + "cost N/A" (never a fabricated
+  dollar figure).
+
+**Done when:** staleness logic unit-tested; local `npm run check-pricing` passes
+with current data and fails with a clear message on stale/drifted data; cron
+workflow exists; estimate UI shows correct badge for `current`/`stale`/`unknown`.
+
 ---
 
 ## Risks & edge cases (must address, not copy)
@@ -252,6 +310,10 @@ Unit tests (mandatory before merge; harness exists — `utils/encryption.test.ts
   signature has no DeepSeek-default fallback.
 - **Provider registry**: DeepSeek default resolution, env-override precedence
   (§Env-var contract), unknown-provider handling, `baseUrl`+path concatenation.
+- **Pricing freshness**: `current`/`stale`/`unknown` derivation (threshold
+  boundary, missing `pricingAsOf`, env-override custom provider), and
+  `check-pricing.mjs` behavior for both machine-diffable (OpenRouter) and
+  page-only (DeepSeek) sources.
 
 Integration tests (recommended): mocked OpenAI-compatible SSE endpoint (local stub
 or `nock`) asserting the normalized `{issues, inputTokens, outputTokens, cost}`
@@ -325,6 +387,11 @@ without reworking the analysis pipeline.
       vs. delete.
 - [ ] Streaming `usage` capture: implement `stream_options: { include_usage: true }`
       (recommended) vs. document estimate-only accounting.
+- [ ] Staleness threshold: 90 days (`PRICING_STALE_AFTER_DAYS`) — right default?
+- [ ] CI pricing check action on drift: auto-PR for machine-diffable providers
+      (recommended) vs. issue-only.
+- [ ] Live pricing follow-up: use OpenRouter's `/api/v1/models` per-model pricing
+      at runtime (kills staleness for that provider) vs. registry + flags only.
 - [ ] Which second provider to validate against: OpenRouter (max model choice) vs.
       OpenAI itself vs. local Ollama/vLLM (zero cost, tests the `authScheme: none`
       + no-usage path).
@@ -340,6 +407,13 @@ without reworking the analysis pipeline.
 
 ## Revision log
 
+- **Rev 3 (2026-08-19):** added pricing freshness as a first-class concern —
+  `pricingAsOf`/`pricingSource` on provider entries, `current`/`stale`/`unknown`
+  derivation, user-visible status badges on cost figures (estimates kept but
+  labeled; never discarded, never fabricated for unknown pricing), scheduled
+  `check-pricing.mjs` CI cron (machine-diff for OpenRouter, staleness nudge for
+  page-only providers) as a new Step 6, staleness tests, and related open
+  decisions.
 - **Rev 2 (2026-08-19):** incorporates external critical review. Corrected the
   key-storage model (user-record `deepseek_key` column, DB migration — not a
   key-store renamespacing); flagged `validateApiKey`/`analyzeFiles` as dead code
