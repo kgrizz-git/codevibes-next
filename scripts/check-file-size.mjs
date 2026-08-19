@@ -64,7 +64,9 @@ for (const file of listFiles(staged)) {
   // scan catches string values.
   // Boundary excludes letters, digits, _, ., /, and - so quoted, assigned,
   // CSS url(), and JSON values match while URLs and plain words do not.
-  if (!file.split("/").some((seg) => ABS_PATH_EXCLUDE.has(seg))) {
+  // Only the first path segment is checked so `src/plans/file.ts` is still
+  // scanned while `plans/file.ts` is excluded.
+  if (!ABS_PATH_EXCLUDE.has(file.split("/")[0])) {
     // Drive paths match with either separator style (backslash or forward slash).
     const absMatch = content.match(/(^|[^A-Za-z0-9_.\/-])(\/Users\/|\/home\/|[A-Za-z]:[\\/])/);
     if (absMatch) {

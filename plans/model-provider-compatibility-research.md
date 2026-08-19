@@ -1,12 +1,12 @@
 # Research: Model / Provider Compatibility (evidence for the plan)
 
 > **Companion to `plans/model-provider-compatibility.md`** (the actionable plan,
-> status NEEDS REVIEW, Rev 6 — **all open decisions resolved**). This doc is the
+> status NEEDS REVIEW, Rev 8 — **all open decisions resolved**). This doc is the
 > verified research and design evidence the plan stands on: how the AI call works
 > today, facts corrected during review, provider config model, env-var contract,
 > pricing-freshness design, risks/edge cases, and candidate-provider research.
-> File references verified 2026-08-19; updated for the round-3
-> (2026-08-19T14-22) review.
+> File references verified 2026-08-19; updated for round 5
+> (2026-08-19T13-41).
 
 ---
 
@@ -104,6 +104,12 @@ Config lives in a single backend module (`providers.ts` + `providerRegistry`,
   **default (DeepSeek) provider only**, not arbitrary registry entries. Rationale:
   self-hosters replacing the endpoint wholesale need one override path; per-provider
   env vars for every registry entry is scope creep.
+- `AI_AUTH` controls the auth scheme for the env-override provider: `bearer`
+  (default) or `none`. When set to `none`, no `Authorization` header is sent.
+- `AI_API_KEY` is the API key for the env-override provider (self-hosters who
+  don't send keys from the client). **Precedence:** request-body key > `AI_API_KEY`
+  env var. When both are present, the request-body key wins (the client's selected
+  key takes priority over the server default).
 - Precedence: **env override > registry value**. If `AI_BASE_URL` is set, the
   effective provider is a synthetic "custom" provider (id `custom`, label "Custom
   (env)") — the registry entry's URL/model/costs are ignored, auth stays `bearer`
@@ -145,7 +151,7 @@ records **when** each provider's pricing was verified (`pricingAsOf` + a
     provider's `pricingAsOf` exceeds the staleness threshold ("pricing review
     due for provider X — check `pricingSource`"), which is the manual-review
     nudge. The workflow is allowed to fail; it's informational, not a merge gate.
-   - The script is also runnable locally (`npm run check-pricing`) so pricing
+  - The script is also runnable locally (`npm run check-pricing`) so pricing
      updates are a deliberate, recorded act: you bump the numbers **and** the date
      in one commit.
 
@@ -230,7 +236,9 @@ from content (deepseekService.ts:870). Non-streaming `analyzeFiles` does read
 Decision: capture streaming `usage` where supported (DeepSeek/OpenAI emit it at
 `[DONE]` with `stream_options: { include_usage: true }`), and **explicitly
 document estimate-only accounting** for providers that never return usage (Ollama).
-Provider `streamingUsage` flag drives this.
+Provider `streamingUsage` flag drives this. **Important:** the final usage chunk
+has an **empty `choices` array** — code that assumes `choices[0]` exists will
+break. The parser must check for `usage` before accessing `choices`.
 
 ### 2.4 `calculateCost` breaking change
 See plan Step 2. All 8 backend call sites updated in one commit; no silent
@@ -311,4 +319,10 @@ just config:
 
 The `ProviderClient` interface from the near-term work (returning normalized
 `{issues, inputTokens, outputTokens}`) should be designed so these slot in later
-without reworking the analysis pipeline.
+without reworking the analysis pipeline. **Full result contract (round-6 #8):**
+the client returns `{issues, inputTokens, outputTokens, cost, costBasis,
+provider, model, pricingStatus}` — `cost`/`costBasis` are computed by the
+service layer from the provider's pricing + metered/estimated usage;
+`provider`/`model`/`pricingStatus` are attached by the service from the registry.
+The SSE `complete` event carries the same shape. One typed contract flows through
+client → service → tests → SSE payload.
