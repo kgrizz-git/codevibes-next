@@ -1,10 +1,11 @@
 # Research: Model / Provider Compatibility (evidence for the plan)
 
 > **Companion to `plans/model-provider-compatibility.md`** (the actionable plan,
-> status NEEDS REVIEW). This doc is the verified research and design evidence the
-> plan stands on: how the AI call works today, facts corrected during review,
-> provider config model, env-var contract, pricing-freshness design, risks/edge
-> cases, and candidate-provider research. File references verified 2026-08-19.
+> status NEEDS REVIEW, Rev 5). This doc is the verified research and design
+> evidence the plan stands on: how the AI call works today, facts corrected during
+> review, provider config model, env-var contract, pricing-freshness design,
+> risks/edge cases, and candidate-provider research. File references verified
+> 2026-08-19; updated for the round-3 (2026-08-19T14-22) review.
 
 ---
 
@@ -80,7 +81,7 @@ A provider entry carries:
 | `label` | `DeepSeek` | UI display name |
 | `baseUrl` | `https://api.deepseek.com/v1` | **contract: must include the API prefix up to (but not including) the endpoint path; client appends `/chat/completions`.** For OpenAI/Ollama/vLLM-style servers this is `…/v1`; DeepSeek today is `…/v1`. |
 | `endpointPath` | `/chat/completions` | default; overridable for oddballs (Azure) |
-| `authScheme` | `bearer` | `bearer` \| `none` (vLLM/Ollama without auth) \| `query` (Azure `api-version`) |
+| `authScheme` | `bearer` | `bearer` \| `none` (vLLM/Ollama without auth). No `custom` value — `bearer` + `headers` covers the rest. `query` was dropped (Azure deferred, §2.9). |
 | `headers` | `{}` | optional static extra headers (e.g. OpenRouter `HTTP-Referer`/`X-Title`) |
 | `defaultModel` | `deepseek-chat` | may be overridden by user |
 | `models` | `['deepseek-chat', 'deepseek-reasoner']` | **static allowlist for MVP; no dynamic model fetch** (OpenRouter model discovery is follow-up) |
@@ -91,6 +92,7 @@ A provider entry carries:
 | `pricingSource` | `https://api-docs.deepseek.com/quick_start/pricing` | where the numbers were verified against; machine-readable for a subset (OpenRouter `/api/v1/models`) |
 | `apiKeyLink` | `https://platform.deepseek.com/` | settings UI hint |
 | `streamingUsage` | `true` | whether the API returns `usage` on the stream (see §2.3) |
+| `maxResponseTokens` | — | optional cap on accumulated response; global safety constant (e.g. 100K) applies if unset (see §2.9) |
 
 Config lives in a single backend module (`providers.ts` + `providerRegistry`,
 **code-registry for the near-term, not DB** — see plan §Open Decision).
@@ -157,11 +159,21 @@ Provider entry carries optional `maxTokens`; absent → 8000 default.
 
 ### 2.2 SSE streaming parsing is brittle (bug exists today — fix, not copy)
 Current parser (deepseekService.ts:837-862) assumes one `data:` line per chunk
-boundary. Real issues: a single SSE event can span two `read()` chunks and the
-current per-read `split('\n')` **drops the partial line** — intermittent stream
-corruption. Providers may emit `delta.role`, `finish_reason`, or `delta.text`
-instead of `delta.content`. Fix with a frame buffer + `delta.content ?? delta.text`
-normalization (plan Step 1).
+boundary. Real issues:
+- A single SSE event can span two `read()` chunks and the current per-read
+  `chunk.split('\n')` **silently truncates** the partial line — everything after
+  the last `\n` in a chunk that doesn't end with one is discarded, causing
+  intermittent stream corruption.
+- The **final read is dropped entirely**: the loop `break`s on `done`
+  (deepseekService.ts:834) *before* decoding `value` (:836), so a complete
+  `data:` line arriving in the last chunk is lost.
+- `[DONE]` at :842 is `continue`, not `break` — data lines after the terminal
+  marker in the same chunk would still be processed.
+- Providers may emit `delta.role`, `finish_reason`, or `delta.text` instead of
+  `delta.content`.
+Fix with a frame buffer (`delta.content ?? delta.text` normalization, decode the
+final `value`/`decoder.flush()`, process post-loop remainder, `break` on `[DONE]`,
+cap `fullContent` growth) — plan Step 1.
 
 ### 2.3 Token/cost accounting differs by provider
 The live streaming path **never reads real `usage`** — it estimates output tokens
@@ -179,9 +191,13 @@ DeepSeek-pricing fallback.
 ### 2.5 Header / auth differences within "OpenAI-compatible"
 The umbrella is looser than it looks: OpenRouter wants `HTTP-Referer`/`X-Title`
 headers; Ollama may send no auth and no `usage`; vLLM serves whatever model is
-loaded; Azure needs `api-version` query param + different auth. The provider entry's
-`authScheme` (`bearer`|`none`|`query`) + optional static `headers` covers all of
-these with ~20 lines.
+loaded. The provider entry's `authScheme` (`bearer`|`none`) + optional static
+`headers` covers these with ~20 lines. **`bearer` + custom `headers` is
+sufficient — no `authScheme: 'custom'` value needed** (review §4.4). **Azure is
+explicitly deferred to follow-up** (§2.9): it needs a URL template
+(`/deployments/{deployment-name}/chat/completions`), `api-version` query-param
+handling, and key-to-query mapping — fields the config model doesn't have
+(`urlTemplate`/`queryParams`), so it's not a near-term candidate.
 
 ### 2.6 Key fallback
 See plan Step 3 matrix. No cross-provider key reuse, ever.
@@ -192,7 +208,22 @@ appends `/chat/completions` (or `endpointPath`). This contract is the difference
 between the "generic base URL" win working and not.
 
 ### 2.8 Error messages
-Parameterized by provider label (plan Step 1).
+Parameterized by provider label, classified per provider (status + body shape,
+not one status check), with a fallback for unrecognized shapes (plan Step 1).
+
+### 2.9 Other production gaps surfaced by review
+- **No upstream timeout** today — a hung provider holds the SSE connection open
+  forever. Add ~120s timeout → `PROVIDER_TIMEOUT` (plan Step 1).
+- **No response-size limit** — `fullContent` grows unbounded in memory. Add a
+  cap → `RESPONSE_TOO_LARGE` (plan Step 1).
+- **Heartbeat lifecycle** — `setInterval` (analysisController.ts:53) is cleared
+  only in `finally` (:81); if abort propagation is swallowed, it fires on a dead
+  response. Clear it in `req.on('close')` directly (plan Step 1).
+- **Concurrency** — service must stay stateless; registry read-only after init so
+  simultaneous requests with different keys don't cross-contaminate (plan Step 1).
+- **Existing `analyses` rows** — new `provider`/`model`/`cost_basis` columns are
+  `NULL` for historical rows; backfill to DeepSeek/estimated, UI shows
+  "Unknown provider" only defensively (plan Step 6).
 
 ---
 
@@ -209,11 +240,12 @@ URLs/models/pricing before adding — don't rely on memory):
   genuinely compatible.
 - **Mistral** — OpenAI-compatible API available.
 - **Moonshot (Kimi)**, **Zhipu GLM** — OpenAI-compatible endpoints.
-- **Azure OpenAI** — OpenAI-compatible with `api-version` query param + different
-  auth; treat as near-term-if-cheap via `authScheme: 'query'`, else follow-up.
 - **Self-hosted/local**: **vLLM**, **Ollama**, **LM Studio** — OpenAI-compatible
   `/v1/chat/completions`; enables local/offline/proxy use with zero protocol code.
   Caveats: auth may be `none`, `usage` may be absent.
+- **Azure OpenAI** — **deferred to follow-up** (not a near-term candidate): needs
+  `/deployments/{name}/chat/completions` URL templating + `api-version`
+  query-param handling, which the current config model doesn't have (§2.5/§2.9).
 
 ## Follow-up scope (broader expansion — track in TO_DO, not part of this plan)
 
@@ -224,6 +256,9 @@ just config:
   `thinking` blocks).
 - **Google Gemini** — `generativelanguage.googleapis.com` REST API.
 - **AWS Bedrock** — SigV4 auth + per-model protocol variants.
+- **Azure OpenAI** — OpenAI-compatible but needs `urlTemplate`
+  (`/deployments/{name}/chat/completions`) + `queryParams` (`api-version`) fields
+  in the config model before it fits (§2.5).
 - **Cohere**, **xAI** (OpenAI-compatible today but verify), others.
 
 The `ProviderClient` interface from the near-term work (returning normalized

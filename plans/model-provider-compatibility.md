@@ -1,7 +1,7 @@
 # Plan: Model / Provider Compatibility
 
 > **Status: NEEDS REVIEW** — draft, not yet approved. Written 2026-08-19.
-> **Revision 4:** incorporates two external review rounds (see Revision log).
+> **Revision 5:** incorporates three external review rounds (see Revision log).
 > Scope decision to confirm: near-term work focuses on **OpenAI-compatible APIs
 > only**; everything else is tracked as follow-up work behind an adapter
 > abstraction.
@@ -32,6 +32,16 @@ API + UI, and keep DeepSeek as the default.
 
 ## Implementation steps (with acceptance criteria)
 
+> **Blockers (from review §2.2):** several open decisions gate specific steps.
+> Steps 1, 2, 4, 6 can proceed independently once their scope is confirmed
+> (Step 4 just needs the "OpenAI-compatible only" call). **Step 3 is fully blocked
+> until the key-source-of-truth decision is resolved** — its design branches on
+> (a) request-body vs server-side keys, and then (b) the `validateApiKey`,
+> `analyzeFiles`, snippet-path, and storage-shape fates (they follow from that
+> choice, see §Open decisions). **Step 5's `GET /estimate` contract is resolved
+> below** (token-only + pricing metadata). Resolve the §Open decisions before
+> starting Step 3; don't let an implementer improvise them.
+
 ### Step 1 — Extract a generic OpenAI-compatible client
 
 Refactor `deepseekService.ts` into an `aiProvider.ts` client:
@@ -40,6 +50,13 @@ same signature plus `provider`. Keep priority prompts, file formatting, JSON
 extraction untouched (they're provider-agnostic). Update `types/index.ts`
 (`AnalyzeRequest` gains `provider`/`model`), `analysisController.ts`,
 `analysisService.ts`.
+
+> **Step ordering note (from review §2.1):** Step 1's `streamAnalysis` calls
+> `calculateCost` (deepseekService.ts:871). Do **not** land Step 1 alone with the
+> old 2-arg signature and then change it in Step 2 — that's a broken intermediate
+> state. Steps 1+2 are atomic: Step 1 must use the **new** `calculateCost`
+> signature from the start, backed by a temporary hardcoded DeepSeek provider
+> object until the registry lands in Step 2.
 
 **Also in this step (small, easy to miss):**
 - Parameterize all error messages by provider label — today they throw
@@ -52,25 +69,62 @@ extraction untouched (they're provider-agnostic). Update `types/index.ts`
   labels happens to preserve those substrings, which is fragile; while touching
   every error site anyway, throw a typed error carrying `code:
   'INVALID_API_KEY' | 'RATE_LIMITED'` (or a custom error class) and route on the
-  code.
+  code. **Per-provider error classification (from review §1.5):** providers
+  differ in *how* they signal these conditions — OpenAI returns 401/429,
+  Groq 401/429 with different JSON shapes, Ollama/vLLM may return none. Don't
+  assume one `response.status` check classifies every provider: add a
+  per-provider `classifyError(status, body)` mapping with a documented
+  fallback for unrecognized shapes (log the raw body, surface
+  `PROVIDER_ERROR`). Typed codes must be *correct per provider*, not just
+  renamed string-sniffing.
 - **Fix the SSE frame-buffer bug** (see §2.2 in companion): accumulate raw bytes
   and split on `\n` only at frame boundaries (carry a partial line across
   `read()` chunks), instead of the current per-read `chunk.split('\n')` which
-  drops partial `data:` lines that straddle reads. **Two tail cases included:**
-  call `decoder.flush()` once `done` is seen (a multi-byte char can straddle the
-  final read), and process any carried remainder after the read loop ends, not
-  only inside it.
+  **silently truncates** partial `data:` lines that straddle reads. **Three tail
+  cases included:**
+  (a) **the final read is dropped today** — the loop `break`s on `done` at
+  deepseekService.ts:834 *before* decoding `value` at :836, so a complete
+  `data:` line arriving in the last chunk is lost. Decode the final `value`
+  before breaking, or rely on `decoder.flush()` to return it — add a test for
+  "final chunk contains a complete `data:` line with no trailing `\n`";
+  (b) call `decoder.flush()` once `done` is seen (a multi-byte char can straddle
+  the final read); (c) process any carried remainder after the read loop ends,
+  not only inside it.
+  **`[DONE]` must stop the stream:** today it's `continue` (:842), which keeps
+  processing trailing lines in the same chunk if a provider sends data after
+  `[DONE]` — change to `break`/flag.
 - Normalize `delta.content ?? delta.text` for providers that emit `delta.text`.
-- **Abort upstream on client disconnect** — `analysisController.ts:48-50` already
-  logs `req.on('close')` but the fetch runs to completion (analysisService.ts:163),
-  burning a full paid call for users who close the tab. Wire
-  `AbortController`/`signal` from the controller through `streamAnalysis` to the
-  upstream fetch; on abort, release the reader lock and stop.
+- **Upstream request timeout:** today there is none — a hung provider keeps the
+  SSE connection open forever. Add a timeout (e.g. 120s) on the upstream fetch,
+  surfaced as a typed `PROVIDER_TIMEOUT` error. (Timeout fires the same
+  `AbortController` as the disconnect path below.)
+- **Response size cap:** `fullContent` accumulates unbounded in memory today. Add
+  a safety cap (provider `maxResponseTokens` or a module constant, e.g. 100K
+  tokens) that stops accumulation and yields a typed `RESPONSE_TOO_LARGE` error
+  rather than OOM-ing.
+- **Abort upstream on client disconnect + clear the heartbeat in the close
+  handler** — `analysisController.ts:48-50` already logs `req.on('close')` but
+  the fetch runs to completion (analysisService.ts:163), burning a full paid call
+  for users who close the tab. Wire `AbortController`/`signal` from the
+  controller through `streamAnalysis` to the upstream fetch; on abort, release
+  the reader lock and stop. **Do not rely on the abort reaching the controller's
+  `finally` to clean up the heartbeat** (`clearInterval` lives only at
+  analysisController.ts:81): if the abort surfaces as an exception caught and
+  re-thrown inside `analyzeRepository`, the 15s heartbeat keeps firing on a dead
+  response. Clear the interval **directly in the `req.on('close')` handler**, and
+  keep it in `finally` as belt-and-suspenders.
+- **Concurrency (from review §3.6):** the current service is stateless — each
+  call creates its own fetch. Preserve this in `aiProvider.ts`: the provider
+  registry is a module-level singleton and must be **read-only** after init
+  (no mutation per-request), so simultaneous requests with different keys/models
+  can't cross-contaminate.
 
 **Done when:** `streamAnalysis` streams identically against DeepSeek with the same
 prompts/parse behavior; error strings interpolate provider label; error routing
-uses typed codes; SSE parser passes the new buffer-split + tail tests (Testing
-strategy); client disconnect aborts the upstream fetch within a bounded time.
+uses typed codes with per-provider classification; SSE parser passes the new
+buffer-split + tail + final-read + post-`[DONE]` tests (Testing strategy); client
+disconnect aborts the upstream fetch within a bounded time and the heartbeat stops
+in the close handler; upstream timeout and response cap are typed errors.
 
 ### Step 2 — Provider registry + pricing
 
@@ -93,6 +147,19 @@ truth exists.
 non-DeepSeek pricing produces expected numbers and that no call site compiles with
 the old arity (typecheck); the 3 frontend pricing sites render/persist the
 server-computed cost and contain no `0.14` literal.
+
+> **Deploy order for the breaking change (from review §1.4):** the new `complete`
+> event shape (provider-aware `cost` + new `provider`/`model`/`pricingStatus`
+> fields) must ship **backend-first, frontend-second**. An old tab with stale JS
+> still computing `(tokens/1e6) * 0.14` will show *both* its local number and the
+> server value — so the frontend deploy must (a) happen after the backend deploy
+> and (b) tolerate the old shape (treat missing `provider`/`model`/`pricingStatus`
+> as "DeepSeek, pricing unknown"). No new-frontend-on-old-backend window.
+> Wording nit from review §2.3: the "8 + 3" count is **8 backend `calculateCost`
+> call sites** (analysisService.ts ×5, deepseekService.ts ×2, tokenCounter.ts ×1)
+> **plus 3 frontend sites that hardcode the pricing formula** — the frontend sites
+> do *not* call `calculateCost`; they are 3 separate hardcoded `(tokens/1e6) * 0.14`
+> literals that must be deleted, not re-pointed.
 
 ### Step 3 — API keys: unify client stores, then per-provider keys
 
@@ -167,16 +234,32 @@ keys still load.
   400 with the valid list. Thread `provider` through **`GET /api/estimate`** too
   (query param, currently `repoUrl` only — analysisController.ts:89-113) so
   estimates use the right pricing.
+- **`GET /estimate` contract (from review §3.3 — resolved):** the endpoint takes
+  no API key (it estimates tokens from the GitHub tree, never calls the AI
+  provider) and should stay that way. It gains a `provider` (default `deepseek`)
+  query param and returns **token counts + the provider's pricing metadata**
+  (`inputCostPerMillion`/`outputCostPerMillion`/`pricingStatus`) so the frontend
+  renders an estimated cost from server-provided pricing — a deliberate exception
+  to "server computes cost", since there's no stream and no `complete` event here.
+  It must **not** take the user's API key, and the frontend must not multiply by a
+  hardcoded rate (it multiplies by the numbers the server returned).
 - README/setup: document provider picker, per-provider keys, and the env-var
   contract (companion doc) for self-hosters.
 - API docs for the changed key endpoint and new `AnalyzeRequest.provider`/`model`
   fields.
 - Release gate (manual, demoted from being the only verification): validate against
   at least one second real provider from the candidate list (companion doc).
+- **Rollback/feature-flag strategy (from review §2.4):** because this touches the
+  core analysis pipeline, the first deploy keeps a simple env flag
+  `USE_LEGACY_PROVIDER=true` (default off) that routes back to the untouched
+  `deepseekService` path. If streaming or cost regresses post-deploy, flip it
+  without a code revert. The flag is removed once the new path has run clean in
+  production for a few days.
 
 **Done when:** invalid provider/model rejected with 400 + valid lists; `GET
-/estimate` honors `provider`; docs updated; tests green (Testing strategy); one
-second provider validated and recorded.
+/estimate` honors `provider` and returns pricing metadata (no key required); docs
+updated; tests green (Testing strategy); one second provider validated and
+recorded; `USE_LEGACY_PROVIDER` rollback flag in place.
 
 ### Step 6 — Pricing freshness: CI check + UI flags + history schema
 
@@ -184,8 +267,10 @@ second provider validated and recorded.
   pricing-freshness logic from the companion doc: machine-readable diff for
   OpenRouter, staleness check (`pricingAsOf` age vs `PRICING_STALE_AFTER_DAYS`,
   default 90) for all providers, clear exit codes/messages.
-- Add `pricing-check.yml` cron (weekly) running the script; on findings it opens
-  an issue (or PR for machine-diffable drift). Informational, not a merge gate.
+- Add `pricing-check.yml` cron (**monthly, or configurable per provider — weekly
+  is too frequent for page-only providers whose only action is a human checking a
+  webpage**, per review §4.3) running the script; on findings it opens an issue
+  (or PR for machine-diffable drift). Informational, not a merge gate.
 - Backend: expose `pricingStatus` (`current` | `stale` | `unknown`) + `pricingAsOf`
   per provider in the estimate/complete payloads (from the registry, cheap — no
   network).
@@ -195,7 +280,11 @@ second provider validated and recorded.
   cost-basis flag (`metered` | `estimated`) columns, following the repo's informal
   migration pattern (`CREATE TABLE IF NOT EXISTS` + `try { ALTER TABLE } catch`,
   database.ts:64-71). `saveAnalysis` + history display (`ResultsPage`) surface
-  them.
+  them. **Backfill (from review §3.4):** existing rows get `NULL` for the new
+  columns — the migration sets `provider='deepseek'`,
+  `model='deepseek-chat'`, `cost_basis='estimated'` for `WHERE ... IS NULL`
+  (every historical row was DeepSeek via the old hardcoded path), and the UI
+  renders "Unknown provider" only if a row still has `NULL` (defensive).
 - Frontend: render the status badge next to cost figures in
   `AnalyzePage`/`ResultsPage` estimate cards and the Settings provider picker;
   "pricing unknown" states show token counts + "cost N/A" (never a fabricated
@@ -212,32 +301,43 @@ shows correct badge for `current`/`stale`/`unknown`.
 
 ## Testing strategy
 
-Unit tests (mandatory before merge; harness exists — `utils/encryption.test.ts`,
+Test runner is **Vitest** (root `npm test`; backend `npm --prefix
+codevibes-backend run test`). CI is enforced, not advisory: `.github/workflows/ci.yml`
+has a `quality` job (lint + typecheck + file-size check), a `test` job
+(`vitest run --coverage` for both packages), a `build` job, and a `security` job
+(gitleaks + semgrep). Existing harness: `utils/encryption.test.ts`,
 `utils/fileFilter.test.ts`; new files e.g. `services/aiProvider.test.ts`,
-`utils/tokenCounter.test.ts`):
+`utils/tokenCounter.test.ts`.
+
+Unit tests (mandatory before merge):
 
 - **SSE parser** (highest ROI — encodes the §2.2 bug fix from the companion doc):
   (a) `data:` event split across two `read()` chunks, (b) multiple events per
   chunk, (c) `reasoning_content` vs `content`, (d) `delta.text` shape, (e)
   `[DONE]`, (f) malformed/partial JSON, (g) **multi-byte char straddling the final
   read** (decoder flush), (h) **final `data:` line arriving without a trailing
-  `\n`** (post-loop remainder).
+  `\n` in the last `read()`** (the dropped-final-value case — a complete event in
+  the final chunk must not be lost), (i) **data lines after `[DONE]` in the same
+  chunk are ignored** (break, not continue).
 - **`parseIssuesFromResponse`**: markdown-wrapped JSON, empty `issues`, missing
   `category`/`severity` normalization, `undefined` line.
 - **`calculateCost` / provider pricing**: per-provider numbers; asserts the new
   signature has no DeepSeek-default fallback.
+- **Error classification**: per-provider `classifyError` — OpenAI 401/429 shapes,
+  Groq different body shapes, unrecognized shape falls back to `PROVIDER_ERROR`
+  (Step 1).
 - **Provider registry**: DeepSeek default resolution, env-override precedence
   (companion doc), unknown-provider handling, `baseUrl`+path concatenation,
   **env values read at import time vs per-request** (see Open Decision — tests
-  must not race module init).
+  must not race module init), **registry read-only after init** (concurrency).
 - **Pricing freshness**: `current`/`stale`/`unknown` derivation (threshold
   boundary, missing `pricingAsOf`, env-override custom provider), and
   `check-pricing.mjs` behavior for both machine-diffable (OpenRouter) and
   page-only (DeepSeek) sources.
-- **Abort path**: client disconnect mid-stream → upstream fetch aborted and reader
-  released (Step 1).
+- **Abort + timeout paths**: client disconnect mid-stream → upstream fetch aborted
+  and reader released; hung provider → `PROVIDER_TIMEOUT` (Step 1).
 - **Controller validation**: unknown `provider`/`model` → 400 with valid lists;
-  `GET /estimate` honors `provider` (Step 5).
+  `GET /estimate` honors `provider` and returns pricing metadata (Step 5).
 
 Integration tests (recommended): mocked OpenAI-compatible SSE endpoint (local stub
 or `nock`) asserting the normalized `{issues, inputTokens, outputTokens, cost}`
@@ -267,6 +367,16 @@ provider — as a release gate, not the sole verification.
 - [x] **Provider config: code registry for now** (resolved) — DB config later
       only if users need runtime provider editing; migration path is a
       `providers` table seeded from the registry.
+- [x] **`GET /estimate` contract** (resolved in Step 5): token-only + provider
+      pricing metadata; takes no API key.
+- [ ] **Azure OpenAI scope** (from review §1.6/§3.5 — recommended: **defer**).
+      Azure needs a URL template (`/deployments/{deployment-name}/chat/completions`),
+      not just an endpoint path, plus `api-version` query-param handling and key
+      mapping — the config model has no `urlTemplate`/`queryParams` fields.
+      Deferring keeps near-term scope clean; the `authScheme`/`headers` fields
+      stay sufficient for the other candidates (bearer + static headers covers
+      OpenRouter's `HTTP-Referer`/`X-Title` — no `authScheme: 'custom'` value
+      needed).
 - [ ] **Key source of truth for analysis (P0 — decides Step 3's design):** (a)
       keep request-body keys and unify the two client stores
       (`codevibes-storage` zustand vs `vibeguard_deepseek_api_key` localStorage),
@@ -311,6 +421,21 @@ provider — as a release gate, not the sole verification.
 
 ## Revision log
 
+- **Rev 5 (2026-08-19):** round-3 critical review. Step 1: heartbeat cleared
+  directly in `req.on('close')` (not just `finally` — verified controller:81);
+  SSE parser also loses the **final read** (`break` on `done` before decoding) and
+  must `break` on `[DONE]`; per-provider error classification (status + body
+  shapes, not one status check); upstream fetch timeout (`PROVIDER_TIMEOUT`);
+  response-size cap (`RESPONSE_TOO_LARGE`); concurrency note (read-only registry);
+  Steps 1+2 flagged atomic (new `calculateCost` signature from the start). Step 2:
+  deploy order backend-first + old-shape tolerance; "8+3" wording clarified (8
+  `calculateCost` sites + 3 hardcoded-literal frontend sites). Step 3 gated by an
+  explicit blockers note (key-source-of-truth + fates). Step 5: `GET /estimate`
+  contract resolved (token-only + pricing metadata, no key) and a
+  `USE_LEGACY_PROVIDER` rollback flag added. Step 6: analyses backfill
+  (DeepSeek/estimated for NULL rows) + monthly (not weekly) pricing cron. Testing:
+  Vitest runner + CI jobs documented; new SSE cases (final-read, post-`[DONE]`)
+  and error-classification tests. Azure explicitly deferred to follow-up.
 - **Rev 4 (2026-08-19):** round-2 external review (all P0/P1/P2 verified). Key-flow
   premise corrected (request-body keys, write-only DB column, two divergent client
   stores, dead `PUT /deepseek-key`); Step 3 rewritten around a key-source-of-truth
