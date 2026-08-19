@@ -145,11 +145,58 @@ records **when** each provider's pricing was verified (`pricingAsOf` + a
     provider's `pricingAsOf` exceeds the staleness threshold ("pricing review
     due for provider X — check `pricingSource`"), which is the manual-review
     nudge. The workflow is allowed to fail; it's informational, not a merge gate.
-  - The script is also runnable locally (`npm run check-pricing`) so pricing
-    updates are a deliberate, recorded act: you bump the numbers **and** the date
-    in one commit.
+   - The script is also runnable locally (`npm run check-pricing`) so pricing
+     updates are a deliberate, recorded act: you bump the numbers **and** the date
+     in one commit.
 
 ---
+
+## Deploy order for the breaking `calculateCost` change (round-4 §1.4)
+
+The new `complete` event shape (provider-aware `cost` + new `provider`/`model`/
+`pricingStatus` fields) must ship **backend-first, frontend-second**. An old tab
+with stale JS still computing `(tokens/1e6) * 0.14` will show *both* its local
+number and the server value — so the frontend deploy must (a) happen after the
+backend deploy and (b) tolerate the old shape (treat missing `provider`/`model`/
+`pricingStatus` as "DeepSeek, pricing unknown"). No new-frontend-on-old-backend
+window.
+
+The "8 + 3" count is **8 backend `calculateCost` call sites** (analysisService.ts
+×5, deepseekService.ts ×2, tokenCounter.ts ×1) **plus 3 frontend sites that
+hardcode the pricing formula** — the frontend sites do *not* call
+`calculateCost`; they are 3 separate hardcoded `(tokens/1e6) * 0.14` literals
+that must be deleted, not re-pointed.
+
+**Inventory verified:** tokenCounter.ts:68 sits *inside* `getFullEstimate`, so
+the ×1 count covers it — no hidden site. The Step 0 CI runs `npm run typecheck`
+(`tsc --noEmit`, both packages) as a hard quality job — the real guard against
+missed call sites; keep it in the same PR.
+
+## Known limitations (accepted — round-5 §3)
+
+- **Keys in localStorage are XSS-accessible** (zustand persist +
+  `vibeguard_deepseek_api_key`). Mitigations: CSP, no server-side keys stored,
+  request-body transport only; server-side key storage is a follow-up.
+- **Rate limits are handled generically:** any 429 → `RATE_LIMITED`, forwarding
+  `Retry-After` when present. Per-provider limit parsing (OpenRouter per-model
+  headers, Groq free-tier, self-hosted none) is follow-up — `classifyError` is
+  the extension point.
+- **Token estimates are approximate for non-DeepSeek providers:** `tokenCounter.ts`
+  uses one tokenizer; DeepSeek vs OpenAI vs Ollama differ, so `costBasis:
+  'estimated'` can be off 20-40%. Metered capture (Step 1) is the mitigation.
+
+## Disconnect handling design (round-5 §2.3)
+
+The exact execution order when a client disconnects mid-stream — document this in
+the implementation code; a changed sequence breaks silently:
+
+1. `req.on('close')` fires
+2. Heartbeat cleared (first line of close handler, before any await)
+3. `AbortController.abort()`
+4. Upstream fetch rejects → reader released
+5. `streamAnalysis` returns typed `ABORTED`
+6. Controller `finally` runs (clearInterval belt-and-suspenders +
+   `!res.writableEnded` guard)
 
 ## Risks & edge cases (must address, not copy)
 
