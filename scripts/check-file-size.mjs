@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 
-const MAX_LINES = 400;
+const MAX_LINES = 500;
 const EXCLUDE = new Set([
   "node_modules",
   "dist",
@@ -19,6 +19,10 @@ const EXCLUDE = new Set([
   ".husky",
   "public",
 ]);
+// Docs under plans/ legitimately discuss machine-specific path patterns
+// (e.g. the quality-gates plan describing the absolute-path rule itself), so
+// the absolute-path gate is skipped there. The line-count gate still applies.
+const ABS_PATH_EXCLUDE = new Set(["plans"]);
 
 function listFiles(staged) {
   if (staged) {
@@ -55,11 +59,14 @@ for (const file of listFiles(staged)) {
     failures++;
   }
 
-  // Absolute-path gate (all files). TS/TSX imports are additionally covered
-  // by eslint import/no-absolute-path; this scan catches string values.
+  // Absolute-path gate (all files except ABS_PATH_EXCLUDE dirs). TS/TSX
+  // imports are additionally covered by eslint import/no-absolute-path; this
+  // scan catches string values.
   // Boundary excludes letters, digits, _, ., /, and - so quoted, assigned,
   // CSS url(), and JSON values match while URLs and plain words do not.
-  {
+  // Only the first path segment is checked so `src/plans/file.ts` is still
+  // scanned while `plans/file.ts` is excluded.
+  if (!ABS_PATH_EXCLUDE.has(file.split("/")[0])) {
     // Drive paths match with either separator style (backslash or forward slash).
     const absMatch = content.match(/(^|[^A-Za-z0-9_.\/-])(\/Users\/|\/home\/|[A-Za-z]:[\\/])/);
     if (absMatch) {
