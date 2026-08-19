@@ -33,10 +33,9 @@ API + UI, and keep DeepSeek as the default.
 
 ## Implementation steps (with acceptance criteria)
 
-> **Blockers:** none remain — the §Open decisions that used to gate Step 3
-> (key source of truth + `validateApiKey`/`analyzeFiles`/snippet-path fates) were
-> resolved in Rev 6. Steps can proceed in order; Steps 1+2 remain atomic (see
-> Step 1 ordering note).
+> **Blockers:** none remain — the §Open decisions that used to gate Step 3 (key
+> source of truth + `validateApiKey`/`analyzeFiles`/snippet-path fates) were
+> resolved in Rev 6. Steps proceed in order; Steps 1+2 remain atomic (Step 1 note).
 
 ### Step 1 — Extract a generic OpenAI-compatible client
 
