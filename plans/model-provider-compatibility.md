@@ -45,12 +45,12 @@ extraction untouched (they're provider-agnostic). Update `types/index.ts`
 (`AnalyzeRequest` gains `provider`/`model`), `analysisController.ts`,
 `analysisService.ts`.
 
-> **Step ordering note (from review §2.1):** Step 1's `streamAnalysis` calls
+> **Step ordering note (review §2.1):** Step 1's `streamAnalysis` calls
 > `calculateCost` (deepseekService.ts:871). Do **not** land Step 1 alone with the
-> old 2-arg signature and then change it in Step 2 — that's a broken intermediate
-> state. Steps 1+2 are atomic: Step 1 must use the **new** `calculateCost`
-> signature from the start, backed by a temporary hardcoded DeepSeek provider
-> object until the registry lands in Step 2.
+> old 2-arg signature and change it in Step 2 — broken intermediate state. Steps
+> 1+2 are atomic: Step 1 uses the **new** `calculateCost` signature from the
+> start, backed by a temporary hardcoded DeepSeek provider object until the
+> registry lands in Step 2.
 >
 > **Legacy preservation (from review E1 — the plan's most important runtime-safety
 > property):** `deepseekService.streamAnalysis` (and its SSE parser) must remain
