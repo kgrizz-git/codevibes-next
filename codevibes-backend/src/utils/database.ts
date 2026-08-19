@@ -81,18 +81,43 @@ export interface User {
     username: string;
     email?: string;
     avatar_url?: string;
-    github_token?: string;
-    deepseek_key?: string;
+    github_token?: string | null;
+    deepseek_key?: string | null;
     created_at: string;
     updated_at: string;
+}
+
+/**
+ * Normalize a token for storage: empty/whitespace values become null (no
+ * plaintext '' rows), non-empty values are encrypted.
+ */
+export function encryptToken(value: string | null | undefined): string | null {
+    return value && value.trim() ? encrypt(value) : null;
+}
+
+/**
+ * Decrypt a stored token field with per-field isolation: a corrupt token in
+ * one field must not block decryption of the other, and must never be
+ * returned as plaintext. On failure the field is nulled and logged.
+ */
+export function decryptTokenField(user: User, field: 'github_token' | 'deepseek_key'): void {
+    const value = user[field];
+    if (!value) return;
+    try {
+        user[field] = decrypt(value);
+    } catch (err) {
+        const detail = err instanceof Error && err.cause instanceof Error ? err.cause.message : err instanceof Error ? err.message : String(err);
+        logger.warn(`Corrupt token for user ${user.id} field ${field}: ${detail}`);
+        user[field] = null;
+    }
 }
 
 export function findUserByGithubId(githubId: number): User | undefined {
     const user = db.prepare('SELECT * FROM users WHERE github_id = ?').get(githubId) as User | undefined;
     if (user) {
-        // Decrypt tokens on read
-        if (user.github_token) user.github_token = decrypt(user.github_token);
-        if (user.deepseek_key) user.deepseek_key = decrypt(user.deepseek_key);
+        // Decrypt tokens on read (per-field isolation)
+        decryptTokenField(user, 'github_token');
+        decryptTokenField(user, 'deepseek_key');
     }
     return user;
 }
@@ -100,9 +125,9 @@ export function findUserByGithubId(githubId: number): User | undefined {
 export function findUserById(id: string): User | undefined {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined;
     if (user) {
-        // Decrypt tokens on read
-        if (user.github_token) user.github_token = decrypt(user.github_token);
-        if (user.deepseek_key) user.deepseek_key = decrypt(user.deepseek_key);
+        // Decrypt tokens on read (per-field isolation)
+        decryptTokenField(user, 'github_token');
+        decryptTokenField(user, 'deepseek_key');
     }
     return user;
 }
@@ -112,9 +137,9 @@ export function createUser(user: Omit<User, 'created_at' | 'updated_at'>): User 
         INSERT INTO users (id, github_id, username, email, avatar_url, github_token, deepseek_key)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    // Encrypt tokens before storage
-    const encryptedGithubToken = user.github_token ? encrypt(user.github_token) : null;
-    const encryptedDeepseekKey = user.deepseek_key ? encrypt(user.deepseek_key) : null;
+    // Encrypt tokens before storage (empty/whitespace normalized to null)
+    const encryptedGithubToken = encryptToken(user.github_token);
+    const encryptedDeepseekKey = encryptToken(user.deepseek_key);
     stmt.run(user.id, user.github_id, user.username, user.email, user.avatar_url, encryptedGithubToken, encryptedDeepseekKey);
     return findUserById(user.id)!;
 }
@@ -123,14 +148,10 @@ export function updateUser(id: string, updates: Partial<Omit<User, 'id' | 'githu
     const fields = Object.keys(updates).filter(k => updates[k as keyof typeof updates] !== undefined);
     if (fields.length === 0) return findUserById(id);
 
-    // Encrypt token fields before storage
+    // Encrypt token fields before storage (empty/whitespace normalized to null)
     const encryptedUpdates = { ...updates };
-    if (encryptedUpdates.github_token) {
-        encryptedUpdates.github_token = encrypt(encryptedUpdates.github_token);
-    }
-    if (encryptedUpdates.deepseek_key) {
-        encryptedUpdates.deepseek_key = encrypt(encryptedUpdates.deepseek_key);
-    }
+    if ('github_token' in encryptedUpdates) encryptedUpdates.github_token = encryptToken(encryptedUpdates.github_token);
+    if ('deepseek_key' in encryptedUpdates) encryptedUpdates.deepseek_key = encryptToken(encryptedUpdates.deepseek_key);
 
     const setClause = fields.map(f => `${f} = ?`).join(', ');
     const values = fields.map(f => encryptedUpdates[f as keyof typeof encryptedUpdates]);
