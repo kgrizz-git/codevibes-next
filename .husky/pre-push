@@ -2,5 +2,9 @@
 set -e
 
 npm run typecheck
-npx vitest run --changed HEAD~1  # frontend smoke
-npm --prefix codevibes-backend run test -- --changed HEAD~1  # backend (full suite in CI)
+# Base for --changed: divergence point from the upstream branch, falling back
+# to the repository's root commit when there is no upstream (first push) or
+# no parent (initial commit). Covers multi-commit pushes, unlike HEAD~1.
+BASE=$(git merge-base HEAD @{upstream} 2>/dev/null || git rev-list --max-parents=0 HEAD | head -1)
+npx vitest run --changed "$BASE"  # frontend smoke
+npm --prefix codevibes-backend run test -- --changed "$BASE"  # backend (full suite in CI)
