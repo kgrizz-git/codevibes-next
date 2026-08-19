@@ -60,7 +60,8 @@ for (const file of listFiles(staged)) {
   // Boundary excludes letters, digits, _, ., /, and - so quoted, assigned,
   // CSS url(), and JSON values match while URLs and plain words do not.
   {
-    const absMatch = content.match(/(^|[^A-Za-z0-9_.\/-])(\/Users\/|\/home\/|[A-Za-z]:\\)/);
+    // Drive paths match with either separator style (backslash or forward slash).
+    const absMatch = content.match(/(^|[^A-Za-z0-9_.\/-])(\/Users\/|\/home\/|[A-Za-z]:[\\/])/);
     if (absMatch) {
       console.error(`✖ ${file}: machine-specific absolute path detected: ${absMatch[2]}`);
       failures++;
