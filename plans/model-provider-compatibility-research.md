@@ -168,7 +168,7 @@ hardcode the pricing formula** — the frontend sites do *not* call
 that must be deleted, not re-pointed.
 
 **Inventory verified:** tokenCounter.ts:68 sits *inside* `getFullEstimate`, so
-the ×1 count covers it — no hidden site. The Step 0 CI runs `npm run typecheck`
+the ×1 count covers it — no hidden site. CI already runs `npm run typecheck`
 (`tsc --noEmit`, both packages) as a hard quality job — the real guard against
 missed call sites; keep it in the same PR.
 

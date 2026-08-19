@@ -2,9 +2,10 @@
 
 > **Status: NEEDS REVIEW** — draft, not yet approved. Written 2026-08-19.
 > **Revision 8:** five review rounds incorporated; **all open decisions resolved**
-> (§Open decisions). Round 5 (13:41) added Step 0 (CI baseline — the plan wrongly
-> claimed CI existed), disambiguated deletion-checklist refs, and added the cheat
-> sheet + edge-case notes below.
+> (§Open decisions). Round 5 (13:41) disambiguated deletion-checklist refs,
+> pinned the `code-snippet` site to `useAnalysis.ts:42`, and added the cheat
+> sheet + edge-case notes below. **#1.3 rejected** — `.github/workflows/ci.yml`
+> exists (4 jobs: quality/test/build/security); the glob check missed it.
 > Scope confirmed: **OpenAI-compatible APIs only**; everything else is follow-up
 > behind an adapter abstraction.
 >
@@ -16,7 +17,6 @@
 
 | Step | Key change | Files | Risk | Effort |
 |------|-----------|-------|------|--------|
-| 0 | CI baseline (none exists today) | `.github/workflows/ci.yml` | low | S |
 | 1 | generic OpenAI-compatible client + SSE/abort fixes | `aiProvider.ts`, `deepseekService.ts` | high | L |
 | 2 | provider registry + pricing | `providers.ts`, `calculateCost`, frontend ×3 | high | M |
 | 3 | unify key store; delete dead key + column | `AnalysisStore`, `authController`, `database.ts` | med | M |
@@ -47,19 +47,6 @@ auth, pricing) dynamic, expose it in the API + UI, and keep DeepSeek as the defa
 > **Blockers:** none remain — the §Open decisions that used to gate Step 3 (key
 > source of truth + `validateApiKey`/`analyzeFiles`/snippet-path fates) were
 > resolved in Rev 6. Steps proceed in order; Steps 1+2 remain atomic (Step 1 note).
-
-### Step 0 — CI baseline (none exists today — round-5 §1.3)
-
-There is **no `.github/` directory in this repo** — the Testing strategy below
-previously claimed CI jobs that don't exist. Create `.github/workflows/ci.yml`
-**before** the feature work so enforcement is real from the first PR: a `quality`
-job (lint + typecheck + file-size check), a `test` job (`vitest run --coverage`
-for both packages), a `build` job, and a `security` job (gitleaks + semgrep).
-Step 6's `pricing-check.yml` cron lands in the same directory. Pre-commit hooks
-(gitleaks + lint-staged + advisory file-size check) already exist locally.
-
-**Done when:** a push to a PR branch runs all four jobs and fails loudly on
-violations (they gate merges).
 
 ### Step 1 — Extract a generic OpenAI-compatible client
 
@@ -378,11 +365,10 @@ shows correct badge for `current`/`stale`/`unknown`.
 ## Testing strategy
 
 Test runner is **Vitest** (root `npm test`; backend `npm --prefix
-codevibes-backend run test`). **CI is created in Step 0** (none exists today —
-`.github/workflows/ci.yml` will carry a `quality` job (lint + typecheck +
-file-size check), a `test` job (`vitest run --coverage` for both packages), a
-`build` job, and a `security` job (gitleaks + semgrep)); enforcement is real from
-the first PR, not aspirational. Existing harness: `utils/encryption.test.ts`,
+codevibes-backend run test`). CI is enforced, not advisory: `.github/workflows/ci.yml`
+has a `quality` job (lint + typecheck + file-size check), a `test` job
+(`vitest run --coverage` for both packages), a `build` job, and a `security` job
+(gitleaks + semgrep). Existing harness: `utils/encryption.test.ts`,
 `utils/fileFilter.test.ts`; new files e.g. `services/aiProvider.test.ts`,
 `utils/tokenCounter.test.ts`.
 
@@ -479,14 +465,16 @@ Decision record — decision + one-line rationale. Nothing blocks implementation
 
 ## Revision log
 
-- **Rev 8 (2026-08-19):** round-5 review (13:41) — **Step 0: CI baseline** (plan
-  wrongly claimed `.github/workflows/ci.yml` existed; none does), Testing-strategy
-  + Step-2 inventory claims corrected, deletion-checklist refs disambiguated
-  (database.ts:113/:134/:144 — §1.1 misread them as authController lines),
-  `code-snippet` site pinned to `useAnalysis.ts:42` (§1.2), cheat sheet,
-  dependency tags, explicit disconnect order, `USE_LEGACY_PROVIDER === 'true'`,
-  ISO-8601 `pricingAsOf`, known limitations (localStorage XSS, generic 429,
-  tokenizer drift), concurrency + rollback-flag tests.
+- **Rev 8 (2026-08-19):** round-5 review (13:41). **#1.1 disambiguated** (plan refs
+  `:113/:134/:144` were `database.ts` context, not `authController.ts` — clarified);
+  **#1.2 pinned** (`code-snippet` literal lives in `useAnalysis.ts:42`, called from
+  `Index.tsx:25`); **#1.3 rejected** (`.github/workflows/ci.yml` exists — glob tool
+  missed it; no Step 0 needed); cheat sheet added; dependency tags on Steps 3-6;
+  disconnect ordering documented in research doc; `USE_LEGACY_PROVIDER === 'true'`
+  parsing; ISO-8601 `pricingAsOf`; known limitations (localStorage XSS, generic
+  429, tokenizer drift) in research doc; concurrency + rollback-flag tests;
+  deletion checklist extended (CREATE TABLE, optionalAuth, SQLite ≥3.35); inline
+  review citations stripped (evidence trail is the revision log).
 - **Rev 7 (2026-08-19):** round-4 review (13:22) — metered-usage capture,
   legacy `streamAnalysis` preserved byte-for-byte, per-request
   `USE_LEGACY_PROVIDER`, URL concat contract, `classifyError` + fetch-throw →
