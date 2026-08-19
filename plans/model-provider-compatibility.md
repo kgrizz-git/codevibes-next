@@ -134,12 +134,12 @@ extraction untouched (they're provider-agnostic). Update `types/index.ts`
   HTTP status (DNS failure, connection refused, dead `AI_BASE_URL`). Route
   fetch-throws and non-JSON error bodies to a typed `PROVIDER_UNREACHABLE`, not
   `UNEXPECTED_ERROR` via the parser's catch.
-- **URL concatenation contract:** `baseUrl` has **no trailing slash** and does
-  **not** include the API prefix; `endpointPath` defaults to
-  `/v1/chat/completions` (the full path after the host). Providers that serve the
-  API at a different prefix (e.g. vLLM at root `/chat/completions`) override
-  `endpointPath`. Concatenate as `baseUrl + endpointPath`; tests assert no `//`
-  and correct handling for both placements.
+- **URL concatenation contract:** `baseUrl` has **no trailing slash** and
+  includes the API prefix (`/v1`); `endpointPath` defaults to `/chat/completions`
+  (overridable for oddballs like Azure). Concatenate as `baseUrl + endpointPath`;
+  tests assert no `//` and correct handling. The research doc config table
+  (line 83) is the canonical reference — `https://api.deepseek.com/v1` +
+  `/chat/completions`.
 - **Concurrency:** the current service is stateless — each call
   creates its own fetch. Preserve in `aiProvider.ts`: the registry is a
   module-level singleton, **read-only** after init (no per-request mutation), so
