@@ -1,4 +1,9 @@
-gitleaks protect --staged
+# Secret scan (skips with a notice if gitleaks is not installed — CI still enforces it)
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged
+else
+  echo "gitleaks not found — secret scan skipped locally (CI enforces; install with: brew install gitleaks)"
+fi
 npx lint-staged
 node scripts/check-file-size.mjs --staged
 

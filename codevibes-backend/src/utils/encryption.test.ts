@@ -45,6 +45,11 @@ describe("decrypt", () => {
     expect(decrypt("sk-legacykey123")).toBe("sk-legacykey123");
   });
 
+  it("returns pre-2021 40-hex-char GitHub PATs unchanged", () => {
+    const hexPat = "f".repeat(40);
+    expect(decrypt(hexPat)).toBe(hexPat);
+  });
+
   it("returns legacy plaintext with colons unchanged (e.g. URL)", () => {
     expect(decrypt("https://api.github.com/repos")).toBe(
       "https://api.github.com/repos"

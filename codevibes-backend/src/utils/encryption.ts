@@ -82,6 +82,7 @@ const LEGACY_PATTERNS = [
     /^ghs_/, // GitHub server-to-server tokens
     /^ghr_/, // GitHub refresh tokens
     /^github_pat_/, // GitHub fine-grained PATs
+    /^[0-9a-fA-F]{40}$/, // pre-2021 GitHub PATs (40 hex chars, no prefix)
     /^sk-/, // DeepSeek API keys
 ];
 

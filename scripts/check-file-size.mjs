@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // check-file-size.mjs
 // Fails if any file exceeds MAX_LINES, and greps staged non-TS files for
-// machine-specific absolute paths (/Users/, /home/, C:\) that would break
-// under a subpath deployment or on another machine.
+// machine-specific absolute paths (macOS/Linux home directories, Windows
+// drives) that would break under a subpath deployment or on another machine.
 //
 // Usage:
 //   node scripts/check-file-size.mjs            # whole repo (CI)
@@ -53,8 +53,10 @@ for (const file of listFiles(staged)) {
   }
 
   // Absolute-path gate (non-TS/TSX only — TS/TSX handled by eslint import/no-absolute-path).
+  // Boundary excludes letters, digits, _, ., /, and - so quoted, assigned,
+  // CSS url(), and JSON values match while URLs and plain words do not.
   if (!/\.(ts|tsx)$/.test(file)) {
-    const absMatch = content.match(/(^|\s)(\/Users\/|\/home\/|[A-Za-z]:\\)/);
+    const absMatch = content.match(/(^|[^A-Za-z0-9_.\/-])(\/Users\/|\/home\/|[A-Za-z]:\\)/);
     if (absMatch) {
       console.error(`✖ ${file}: machine-specific absolute path detected: ${absMatch[2]}`);
       failures++;

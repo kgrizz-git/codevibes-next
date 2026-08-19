@@ -98,37 +98,36 @@ export function encryptToken(value: string | null | undefined): string | null {
 /**
  * Decrypt a stored token field with per-field isolation: a corrupt token in
  * one field must not block decryption of the other, and must never be
- * returned as plaintext. On failure the field is nulled in memory, logged,
- * and `true` is returned so the caller can persist the cleanup.
+ * returned as plaintext. On failure the field is nulled in memory only —
+ * the stored ciphertext is preserved, because a GCM authentication failure
+ * is indistinguishable from a rotated/mismatched ENCRYPTION_KEY, and
+ * deleting the value would make otherwise recoverable credentials
+ * unrecoverable. Each (user, field) pair is logged once per process.
  */
-export function decryptTokenField(user: User, field: 'github_token' | 'deepseek_key'): boolean {
+const loggedCorruptTokens = new Set<string>();
+
+export function decryptTokenField(user: User, field: 'github_token' | 'deepseek_key'): void {
     const value = user[field];
-    if (!value) return false;
+    if (!value) return;
     try {
         user[field] = decrypt(value);
-        return false;
     } catch (err) {
-        const detail = err instanceof Error && err.cause instanceof Error ? err.cause.message : err instanceof Error ? err.message : String(err);
-        logger.warn(`Corrupt token for user ${user.id} field ${field}: ${detail}`);
+        const key = `${user.id}:${field}`;
+        if (!loggedCorruptTokens.has(key)) {
+            loggedCorruptTokens.add(key);
+            const detail = err instanceof Error && err.cause instanceof Error ? err.cause.message : err instanceof Error ? err.message : String(err);
+            logger.warn(`Corrupt token for user ${user.id} field ${field}: ${detail} (value preserved for recovery)`);
+        }
         user[field] = null;
-        return true;
     }
-}
-
-/**
- * Persist a nulled token field after a verified corruption so the corrupt
- * blob is cleared from the database and later reads stay quiet.
- */
-function clearCorruptToken(id: string, field: 'github_token' | 'deepseek_key'): void {
-    db.prepare(`UPDATE users SET ${field} = NULL WHERE id = ?`).run(id);
 }
 
 export function findUserByGithubId(githubId: number): User | undefined {
     const user = db.prepare('SELECT * FROM users WHERE github_id = ?').get(githubId) as User | undefined;
     if (user) {
         // Decrypt tokens on read (per-field isolation)
-        if (decryptTokenField(user, 'github_token')) clearCorruptToken(user.id, 'github_token');
-        if (decryptTokenField(user, 'deepseek_key')) clearCorruptToken(user.id, 'deepseek_key');
+        decryptTokenField(user, 'github_token');
+        decryptTokenField(user, 'deepseek_key');
     }
     return user;
 }
@@ -137,8 +136,8 @@ export function findUserById(id: string): User | undefined {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined;
     if (user) {
         // Decrypt tokens on read (per-field isolation)
-        if (decryptTokenField(user, 'github_token')) clearCorruptToken(user.id, 'github_token');
-        if (decryptTokenField(user, 'deepseek_key')) clearCorruptToken(user.id, 'deepseek_key');
+        decryptTokenField(user, 'github_token');
+        decryptTokenField(user, 'deepseek_key');
     }
     return user;
 }
