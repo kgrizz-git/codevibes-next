@@ -64,7 +64,7 @@ export async function analyze(req: AuthenticatedRequest, res: Response): Promise
             repoUrl,
             apiKey,
             priorityLevel as 1 | 2 | 3,
-            githubToken  // Pass user's GitHub token for private repos
+            githubToken ?? undefined  // Pass user's GitHub token for private repos
         );
     } catch (error: any) {
         logger.error('Analyze endpoint error', { error: error.message });
@@ -98,7 +98,7 @@ export async function estimate(req: AuthenticatedRequest, res: Response): Promis
     try {
         logger.request('GET', '/api/estimate', { repoUrl, hasToken: !!githubToken });
 
-        const estimateResult = await analysisService.getEstimate(repoUrl, githubToken);
+        const estimateResult = await analysisService.getEstimate(repoUrl, githubToken ?? undefined);
         res.json(estimateResult);
     } catch (error: any) {
         logger.error('Estimate endpoint error', { error: error.message });
@@ -129,7 +129,7 @@ export async function validateRepo(req: AuthenticatedRequest, res: Response): Pr
     try {
         logger.request('POST', '/api/validate-repo', { repoUrl, hasToken: !!githubToken });
 
-        const repoInfo = await analysisService.validateRepository(repoUrl, githubToken);
+        const repoInfo = await analysisService.validateRepository(repoUrl, githubToken ?? undefined);
 
         res.json({
             valid: true,

@@ -18,10 +18,8 @@ dist-ssr
 .env.*
 !.env.example
 
-# Documentation (exclude all except LICENSE and README)
-*.md
-!LICENSE.md
-!README.md
+# Package manager lockfile hygiene (standardize on npm)
+bun.lockb
 
 # Editor directories and files
 .vscode/*
@@ -33,3 +31,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Temp / review artifacts
+tmp/
+
+# Coverage output
+coverage/

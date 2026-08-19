@@ -16,7 +16,7 @@ import type {
 } from '../types/index.js';
 import * as githubService from './githubService.js';
 import * as deepseekService from './deepseekService.js';
-import { estimateTokens, calculateCost } from '../utils/tokenCounter.js';
+import { calculateCost } from '../utils/tokenCounter.js';
 import { getPriorityName } from '../utils/fileFilter.js';
 import { logger } from '../utils/logger.js';
 
@@ -120,7 +120,7 @@ export async function analyzeRepository(
         // Get files for this priority
         sendStatus(res, `Scanning ${getPriorityName(priority)} files...`, 0, 0);
 
-        const { files, totalMatching } = await githubService.getFilesForPriority(
+        const { files } = await githubService.getFilesForPriority(
             owner,
             repo,
             priority,

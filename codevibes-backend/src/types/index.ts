@@ -97,7 +97,7 @@ export interface FileEventData {
     status: 'scanning' | 'complete';
 }
 
-export interface IssueEventData extends AnalysisIssue { }
+export type IssueEventData = AnalysisIssue;
 
 export interface CompleteEventData {
     priority: PriorityLevel;

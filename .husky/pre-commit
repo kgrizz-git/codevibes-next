@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -e
+
+# Secret scan (skips with a notice if gitleaks is not installed — CI still enforces it)
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged
+else
+  echo "gitleaks not found — secret scan skipped locally (CI enforces; install with: brew install gitleaks)"
+fi
+npx lint-staged
+node scripts/check-file-size.mjs --staged
+
+# Static security analysis on changed TS/TSX files (skips if none staged or semgrep absent)
+if command -v semgrep >/dev/null 2>&1; then
+  if git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' | grep -q .; then
+    git diff --cached -z --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' | xargs -0 semgrep scan --config p/typescript --config p/javascript
+  fi
+fi

@@ -3,12 +3,14 @@ dist/
 logs/
 data/*.db
 data/*.sqlite
+data/*.db-shm
+data/*.db-wal
+
+# Coverage output
+coverage/
 
 # Environment variables
 .env
 .env.local
 .env.*
 !.env.example
-
-# Documentation (exclude all except README)
-*.md

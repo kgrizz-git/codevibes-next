@@ -4,7 +4,7 @@
 
 import type { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { findUserByGithubId, createUser, updateUser, findUserById } from '../utils/database.js';
+import { findUserByGithubId, createUser, updateUser } from '../utils/database.js';
 import { generateToken, setAuthCookie, clearAuthCookie, type AuthenticatedRequest } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
 

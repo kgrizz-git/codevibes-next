@@ -856,7 +856,7 @@ export async function* streamAnalysis(
                         fullContent += content;
                         yield { type: 'chunk', content };
                     }
-                } catch (e) {
+                } catch {
                     // Skip invalid JSON chunks
                 }
             }

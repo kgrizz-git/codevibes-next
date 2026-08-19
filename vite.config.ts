@@ -4,15 +4,21 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+// NOTE: kept as a static config object (not a ({ mode }) => … callback) because
+// vitest's mergeConfig cannot merge callback configs. componentTagger is a
+// Lovable dev-only affordance, so it is gated on NODE_ENV === "development"
+// (vite dev sets this; `vitest run` sets "test", `vite build` sets "production").
+export default defineConfig({
   server: {
     host: "::",
     port: 8080,
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react(), process.env.NODE_ENV === "development" && componentTagger()].filter(
+    Boolean,
+  ),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
-}));
+});
