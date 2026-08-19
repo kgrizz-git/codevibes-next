@@ -4,6 +4,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import * as api from '@/lib/api';
+import { hydrateStoredApiKey } from '@/store/analysisStore';
 
 interface AuthContextType {
     user: api.User | null;
@@ -42,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     useEffect(() => {
+        void hydrateStoredApiKey();
         refreshUser().finally(() => setIsLoading(false));
     }, []);
 

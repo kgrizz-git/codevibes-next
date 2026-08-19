@@ -6,6 +6,29 @@ import { Calendar, Plus, Wrench, Check, Rocket, ArrowLeft, GitBranch } from 'luc
 // Changelog data - add new entries at the top
 const changelogData = [
     {
+        version: 'v1.0.4-beta',
+        date: 'August 19, 2026',
+        title: 'CodeQL Cookie and Storage Hardening',
+        description: 'CSRF tokens for cookie-authenticated mutations, encrypted session cookies, and encrypted browser storage for DeepSeek API keys.',
+        changes: [
+            {
+                type: 'fixed',
+                title: 'CSRF protection',
+                description: 'Unsafe browser requests must send X-CSRF-Token matching the csrf_token cookie. GET /api/health returns csrfToken in JSON so the cross-origin SPA can attach the header. curl without Origin is unchanged.',
+            },
+            {
+                type: 'fixed',
+                title: 'Encrypted session cookie',
+                description: 'The auth_token cookie is AES-256-GCM encrypted at rest. Existing plaintext JWTs still verify during rollout.',
+            },
+            {
+                type: 'fixed',
+                title: 'Encrypted API key storage',
+                description: 'DeepSeek keys are encrypted with Web Crypto before localStorage. Legacy plaintext keys are migrated on read.',
+            },
+        ],
+    },
+    {
         version: 'v1.0.3-beta',
         date: 'August 19, 2026',
         title: 'Dependency Security Patches',

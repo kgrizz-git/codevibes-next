@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import {
+  API_KEY_STORAGE_KEY,
+  clearEncryptedSecret,
+  readEncryptedSecret,
+  takeLegacyZustandApiKey,
+  writeEncryptedSecret,
+} from '@/lib/secretStorage';
 
 export interface AnalysisIssue {
   id: string;
@@ -71,11 +77,16 @@ const initialPriorities: PriorityLevel[] = [
   { level: 3, name: 'Other Files', description: 'Tests, configs, utilities, documentation', files: [], status: 'pending', issues: [], tokenCount: 0 },
 ];
 
-export const useAnalysisStore = create<AnalysisState>()(
-  persist(
-    (set) => ({
+export const useAnalysisStore = create<AnalysisState>()((set) => ({
       apiKey: null,
-      setApiKey: (key) => set({ apiKey: key }),
+      setApiKey: (key) => {
+        if (key) {
+          void writeEncryptedSecret(API_KEY_STORAGE_KEY, key);
+        } else {
+          clearEncryptedSecret(API_KEY_STORAGE_KEY);
+        }
+        set({ apiKey: key });
+      },
       repoUrl: '',
       setRepoUrl: (url) => set({ repoUrl: url }),
       repoInfo: null,
@@ -109,7 +120,19 @@ export const useAnalysisStore = create<AnalysisState>()(
         isAnalyzing: false, currentPriority: null, priorities: initialPriorities, vibeScore: 0,
         totalTokensUsed: 0, filesScanned: 0, elapsedTime: 0, streamingContent: '', awaitingApproval: null, repoInfo: null,
       }),
-    }),
-    { name: 'codevibes-storage', partialize: (state) => ({ apiKey: state.apiKey }) }
-  )
-);
+}));
+
+/**
+ * Load an encrypted (or legacy plaintext) API key into memory once at startup.
+ */
+export async function hydrateStoredApiKey(): Promise<void> {
+  const stored = await readEncryptedSecret(API_KEY_STORAGE_KEY);
+  if (stored) {
+    useAnalysisStore.setState({ apiKey: stored });
+    return;
+  }
+  const legacy = takeLegacyZustandApiKey();
+  if (legacy) {
+    useAnalysisStore.getState().setApiKey(legacy);
+  }
+}

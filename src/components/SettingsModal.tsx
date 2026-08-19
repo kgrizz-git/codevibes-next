@@ -11,23 +11,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Key } from "lucide-react";
 import { toast } from "sonner";
+import { useAnalysisStore } from "@/store/analysisStore";
+import { API_KEY_STORAGE_KEY, readEncryptedSecret } from "@/lib/secretStorage";
 
 interface SettingsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-const API_KEY_STORAGE_KEY = "vibeguard_deepseek_api_key";
-
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
+  const persistApiKey = useAnalysisStore((state) => state.setApiKey);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(API_KEY_STORAGE_KEY);
-    if (stored) {
-      setApiKey(stored);
+    if (!open) {
+      return;
     }
+    void readEncryptedSecret(API_KEY_STORAGE_KEY)
+      .then((stored) => {
+        setApiKey(stored ?? "");
+      })
+      .catch(() => {
+        setApiKey("");
+      });
   }, [open]);
 
   const handleSave = () => {
@@ -35,9 +42,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
       toast.error("API key is required");
       return;
     }
-    localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+    persistApiKey(apiKey.trim());
     toast.success("API key saved", {
-      description: "Your DeepSeek API key has been stored securely.",
+      description: "Your DeepSeek API key is encrypted before it is stored in this browser.",
     });
     onOpenChange(false);
   };
@@ -110,6 +117,6 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   );
 }
 
-export function getStoredApiKey(): string | null {
-  return localStorage.getItem(API_KEY_STORAGE_KEY);
+export async function getStoredApiKey(): Promise<string | null> {
+  return readEncryptedSecret(API_KEY_STORAGE_KEY);
 }

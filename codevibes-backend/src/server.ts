@@ -11,6 +11,7 @@ import authRoutes from './routes/authRoutes.js';
 import historyRoutes from './routes/historyRoutes.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { standardLimiter } from './middleware/rateLimiter.js';
+import { csrfProtection } from './middleware/csrf.js';
 import { logger } from './utils/logger.js';
 import { APP_VERSION } from './version.js';
 
@@ -51,11 +52,12 @@ app.use(cors({
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 }));
 
 // Cookie parser for auth
 app.use(cookieParser());
+app.use(csrfProtection);
 
 // Parse JSON bodies
 app.use(express.json({ limit: '10mb' }));

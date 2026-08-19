@@ -8,7 +8,7 @@ export default mergeConfig(viteConfig, defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     // The backend is a separate package with its own vitest config; never
     // let the frontend runner recurse into it (or its build output).
-    exclude: ["**/node_modules/**", "**/.git/**", "codevibes-backend/**", "dist/**"],
+    exclude: ["**/node_modules/**", "**/.git/**", "codevibes-backend/**", "dist/**", "tmp/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],

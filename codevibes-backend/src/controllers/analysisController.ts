@@ -155,5 +155,7 @@ export function health(_req: Request, res: Response): void {
         status: 'ok',
         timestamp: new Date().toISOString(),
         version: APP_VERSION,
+        // Cross-origin SPAs cannot read the csrf_token cookie; return it here.
+        csrfToken: typeof res.locals.csrfToken === 'string' ? res.locals.csrfToken : null,
     });
 }

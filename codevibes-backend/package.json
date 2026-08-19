@@ -1,6 +1,6 @@
 {
     "name": "codevibes-backend",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "description": "CodeVibes - Open-source code analysis API using DeepSeek v3",
     "main": "dist/server.js",
     "type": "module",

@@ -93,8 +93,26 @@ export default function ApiReferencePage() {
                         <CodeBlock language="json" code={`{
   "status": "ok",
   "timestamp": "2026-01-12T00:00:00.000Z",
-  "version": "1.0.3"
+  "version": "1.0.4",
+  "csrfToken": "<hex>"
 }`} />
+                    </section>
+
+                    <section className="mb-12 animate-fade-in">
+                        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                            <Shield className="w-5 h-5 text-primary" />
+                            CSRF (browser clients)
+                        </h2>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Cookie-authenticated POST, PUT, PATCH, and DELETE from a browser must send the
+                            <code className="mx-1 font-mono text-xs">csrf_token</code> cookie value as
+                            <code className="mx-1 font-mono text-xs">X-CSRF-Token</code>. Because the UI and
+                            API are different origins, read
+                            <code className="mx-1 font-mono text-xs">csrfToken</code> from
+                            <code className="mx-1 font-mono text-xs">GET /api/health</code> instead of
+                            <code className="mx-1 font-mono text-xs">document.cookie</code>.
+                            curl and other non-browser clients (no Origin header) are not required to send it.
+                        </p>
                     </section>
 
                     {/* Validate Repository */}

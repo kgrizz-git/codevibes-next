@@ -428,6 +428,11 @@ function calculateVibeScore(issues: Issue[]): number {
 🔒 **Dependency patches**: Same-major npm bumps for Dependabot alerts (PostCSS, Express 4.22.2 transitives, react-router-dom 6.30.6, uuid 13.0.2, minimatch 9.0.9, plus overrides for nested lodash/js-yaml/brace-expansion/etc.).
 ⚠️ **Deferred**: React Router 7 and path-to-regexp 8 remain out of scope (breaking majors). Two Router advisories that only patch in 7.18 stay open.
 
+### [v1.0.4] - 2026-08-19
+🔒 **CSRF**: Browser POST/PUT/PATCH/DELETE must send `X-CSRF-Token` matching the `csrf_token` cookie. `GET /api/health` returns `csrfToken` for cross-origin SPAs.
+🔒 **Auth cookie**: `auth_token` is AES-256-GCM encrypted; legacy JWTs still verify.
+🔒 **API keys**: DeepSeek keys are encrypted in localStorage; old plaintext keys migrate on read.
+
 ---
 
 ## 🤝 Contributing
