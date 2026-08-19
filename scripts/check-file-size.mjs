@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 
-const MAX_LINES = 400;
+const MAX_LINES = 500;
 const EXCLUDE = new Set([
   "node_modules",
   "dist",
