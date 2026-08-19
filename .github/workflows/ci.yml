@@ -93,8 +93,6 @@ jobs:
           ./gitleaks detect --source . --exit-code 1
       - name: Install semgrep (pinned v1.173.0)
         run: pipx install "semgrep==1.173.0"
-      - name: semgrep ci
-        env:
-          SEMGREP_BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: semgrep ci --config p/typescript --config p/javascript --severity ERROR
+      - name: semgrep scan
+        run: semgrep scan --config p/typescript --config p/javascript --error
 
