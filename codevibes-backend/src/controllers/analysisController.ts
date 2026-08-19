@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import * as analysisService from '../services/analysisService.js';
 import { logger } from '../utils/logger.js';
 import { type AuthenticatedRequest, optionalAuth } from '../utils/auth.js';
+import { APP_VERSION } from '../version.js';
 
 // Re-export optionalAuth for use in routes
 export { optionalAuth };
@@ -153,6 +154,6 @@ export function health(_req: Request, res: Response): void {
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        version: '1.0.0',
+        version: APP_VERSION,
     });
 }

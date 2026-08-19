@@ -77,11 +77,11 @@ export default function DocumentationPage() {
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="p-4 rounded-xl border border-border bg-card">
                                 <div className="text-sm text-muted-foreground mb-1">Current Version</div>
-                                <div className="text-2xl font-mono font-bold text-primary">1.0.2-beta</div>
+                                <div className="text-2xl font-mono font-bold text-primary">1.0.3-beta</div>
                             </div>
                             <div className="p-4 rounded-xl border border-border bg-card">
                                 <div className="text-sm text-muted-foreground mb-1">Release Date</div>
-                                <div className="text-2xl font-mono font-bold">January 2026</div>
+                                <div className="text-2xl font-mono font-bold">August 2026</div>
                             </div>
                         </div>
                     </section>
