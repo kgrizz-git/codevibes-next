@@ -103,7 +103,10 @@ export function encryptToken(value: string | null | undefined): string | null {
  * the stored ciphertext is preserved, because a GCM authentication failure
  * is indistinguishable from a rotated/mismatched ENCRYPTION_KEY, and
  * deleting the value would make otherwise recoverable credentials
- * unrecoverable. Each (user, field) pair is logged once per process.
+ * unrecoverable. Each (user, field) pair is logged once per process to
+ * avoid log spam on hot paths — this is a dedup, not a guarantee that
+ * corruption is monitored, so the condition stays silent in that process
+ * even if a different root cause later appears.
  */
 const loggedCorruptTokens = new Set<string>();
 
