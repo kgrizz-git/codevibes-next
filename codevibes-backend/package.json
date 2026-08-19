@@ -16,12 +16,12 @@
         "cookie-parser": "^1.4.7",
         "cors": "^2.8.5",
         "dotenv": "^16.3.1",
-        "express": "^4.18.2",
+        "express": "^5.2.1",
         "express-rate-limit": "^7.1.5",
         "jsonwebtoken": "^9.0.3",
-        "minimatch": "^9.0.3",
+        "minimatch": "^9.0.7",
         "tiktoken": "^1.0.12",
-        "uuid": "^13.0.0"
+        "uuid": "^14.0.0"
     },
     "devDependencies": {
         "@types/better-sqlite3": "^7.6.13",
@@ -31,7 +31,7 @@
         "@types/jsonwebtoken": "^9.0.10",
         "@types/node": "^20.10.6",
         "@types/uuid": "^10.0.0",
-        "tsx": "^4.7.0",
+        "tsx": "^4.23.12",
         "typescript": "^5.3.3"
     },
     "engines": {
