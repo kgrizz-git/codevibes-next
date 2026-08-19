@@ -98,26 +98,37 @@ export function encryptToken(value: string | null | undefined): string | null {
 /**
  * Decrypt a stored token field with per-field isolation: a corrupt token in
  * one field must not block decryption of the other, and must never be
- * returned as plaintext. On failure the field is nulled and logged.
+ * returned as plaintext. On failure the field is nulled in memory, logged,
+ * and `true` is returned so the caller can persist the cleanup.
  */
-export function decryptTokenField(user: User, field: 'github_token' | 'deepseek_key'): void {
+export function decryptTokenField(user: User, field: 'github_token' | 'deepseek_key'): boolean {
     const value = user[field];
-    if (!value) return;
+    if (!value) return false;
     try {
         user[field] = decrypt(value);
+        return false;
     } catch (err) {
         const detail = err instanceof Error && err.cause instanceof Error ? err.cause.message : err instanceof Error ? err.message : String(err);
         logger.warn(`Corrupt token for user ${user.id} field ${field}: ${detail}`);
         user[field] = null;
+        return true;
     }
+}
+
+/**
+ * Persist a nulled token field after a verified corruption so the corrupt
+ * blob is cleared from the database and later reads stay quiet.
+ */
+function clearCorruptToken(id: string, field: 'github_token' | 'deepseek_key'): void {
+    db.prepare(`UPDATE users SET ${field} = NULL WHERE id = ?`).run(id);
 }
 
 export function findUserByGithubId(githubId: number): User | undefined {
     const user = db.prepare('SELECT * FROM users WHERE github_id = ?').get(githubId) as User | undefined;
     if (user) {
         // Decrypt tokens on read (per-field isolation)
-        decryptTokenField(user, 'github_token');
-        decryptTokenField(user, 'deepseek_key');
+        if (decryptTokenField(user, 'github_token')) clearCorruptToken(user.id, 'github_token');
+        if (decryptTokenField(user, 'deepseek_key')) clearCorruptToken(user.id, 'deepseek_key');
     }
     return user;
 }
@@ -126,8 +137,8 @@ export function findUserById(id: string): User | undefined {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined;
     if (user) {
         // Decrypt tokens on read (per-field isolation)
-        decryptTokenField(user, 'github_token');
-        decryptTokenField(user, 'deepseek_key');
+        if (decryptTokenField(user, 'github_token')) clearCorruptToken(user.id, 'github_token');
+        if (decryptTokenField(user, 'deepseek_key')) clearCorruptToken(user.id, 'deepseek_key');
     }
     return user;
 }

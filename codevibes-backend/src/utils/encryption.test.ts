@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterAll, beforeEach, describe, it, expect, vi } from "vitest";
 import { encrypt, decrypt, isEncrypted, looksEncrypted } from "./encryption.js";
 import { decryptTokenField, encryptToken, type User } from "./database.js";
 
@@ -177,5 +177,62 @@ describe("decryptTokenField (per-field isolation)", () => {
     const user = makeUser({ github_token: "legacy-plain" });
     decryptTokenField(user, "github_token");
     expect(user.github_token).toBe("legacy-plain");
+  });
+});
+
+describe("startup key validation", () => {
+  const VALID_KEY = "ab".repeat(32);
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterAll(() => {
+    delete process.env.ENCRYPTION_KEY;
+    delete process.env.NODE_ENV;
+  });
+
+  async function importEncryption(): Promise<typeof import("./encryption.js")> {
+    return import("./encryption.js");
+  }
+
+  it("throws in production when the key is missing", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.ENCRYPTION_KEY;
+    await expect(importEncryption()).rejects.toThrow(/ENCRYPTION_KEY/);
+  });
+
+  it("throws in production for a short key", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.ENCRYPTION_KEY = "abcd";
+    await expect(importEncryption()).rejects.toThrow(/ENCRYPTION_KEY/);
+  });
+
+  it("throws in production for a non-hex key", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.ENCRYPTION_KEY = "zz".repeat(32);
+    await expect(importEncryption()).rejects.toThrow(/ENCRYPTION_KEY/);
+  });
+
+  it("throws in production for an overlong key", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.ENCRYPTION_KEY = VALID_KEY + "00";
+    await expect(importEncryption()).rejects.toThrow(/ENCRYPTION_KEY/);
+  });
+
+  it("accepts an exact 64-hex-char key in production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.ENCRYPTION_KEY = VALID_KEY;
+    const mod = await importEncryption();
+    const ciphertext = mod.encrypt("prod-secret");
+    expect(mod.decrypt(ciphertext)).toBe("prod-secret");
+  });
+
+  it("uses an ephemeral dev key when unset outside production", async () => {
+    delete process.env.NODE_ENV;
+    delete process.env.ENCRYPTION_KEY;
+    const mod = await importEncryption();
+    const ciphertext = mod.encrypt("dev-secret");
+    expect(mod.decrypt(ciphertext)).toBe("dev-secret");
   });
 });

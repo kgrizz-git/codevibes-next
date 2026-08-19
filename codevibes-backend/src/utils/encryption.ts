@@ -6,11 +6,23 @@ import crypto from 'crypto';
 
 // Encryption key from environment - MUST be set for production
 // Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length < 64) {
-    console.warn('⚠️  ENCRYPTION_KEY not set or too short. Using fallback (NOT SECURE for production!)');
+const KEY_HEX_RE = /^[0-9a-fA-F]{64}$/;
+
+function resolveKeyBuffer(): Buffer {
+    const key = process.env.ENCRYPTION_KEY;
+    if (key && KEY_HEX_RE.test(key)) return Buffer.from(key, 'hex');
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error('ENCRYPTION_KEY must be exactly 64 hexadecimal characters (32 bytes) and is required in production');
+    }
+    if (key) {
+        console.warn('ENCRYPTION_KEY must be exactly 64 hexadecimal characters (32 bytes) - using an ephemeral random dev key instead');
+    } else {
+        console.warn('ENCRYPTION_KEY not set - using an ephemeral random dev key. Tokens encrypted under it are unrecoverable after restart; DO NOT USE IN PRODUCTION.');
+    }
+    return crypto.randomBytes(32);
 }
-const KEY_BUFFER = Buffer.from((ENCRYPTION_KEY || '0'.repeat(64)).slice(0, 64), 'hex');
+
+const KEY_BUFFER = resolveKeyBuffer();
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
