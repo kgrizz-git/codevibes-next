@@ -17,6 +17,11 @@ const changelogData = [
                 description: 'Bumped PostCSS, nanoid, js-yaml, flatted, brace-expansion, minimatch, glob, picomatch, lodash, ajv 6.15.0, uuid, Express 4.22.2 transitives (body-parser, qs, path-to-regexp 0.1.13), and react-router-dom 6.30.6.',
             },
             {
+                type: 'fixed',
+                title: 'Health endpoint version',
+                description: 'GET /api/health now returns 1.0.3, matching the API reference example.',
+            },
+            {
                 type: 'improved',
                 title: 'Pinned safe overrides',
                 description: 'Added npm overrides so nested copies stay on patched lines without jumping to breaking majors (path-to-regexp 8, React Router 7, minimatch 10, uuid 14).',

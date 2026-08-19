@@ -6,6 +6,7 @@ import { Octokit } from '@octokit/rest';
 import type { RepoInfo, FileEntry, FileContent, PriorityLevel } from '../types/index.js';
 import { categorizeFiles, filterFilesByPriority } from '../utils/fileFilter.js';
 import { logger } from '../utils/logger.js';
+import { APP_VERSION } from '../version.js';
 
 // GitHub URL parsing regex
 const GITHUB_URL_REGEX = /github\.com\/([^/]+)\/([^/]+)/;
@@ -42,7 +43,7 @@ function createOctokit(token?: string): Octokit {
 
     return new Octokit({
         auth: authToken,
-        userAgent: 'CodeVibes/1.0.0',
+        userAgent: `CodeVibes/${APP_VERSION}`,
     });
 }
 
