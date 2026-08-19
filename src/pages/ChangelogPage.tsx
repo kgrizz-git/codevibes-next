@@ -6,6 +6,24 @@ import { Calendar, Plus, Wrench, Check, Rocket, ArrowLeft, GitBranch } from 'luc
 // Changelog data - add new entries at the top
 const changelogData = [
     {
+        version: 'v1.0.3-beta',
+        date: 'August 19, 2026',
+        title: 'Dependency Security Patches',
+        description: 'Same-major npm bumps and overrides for Dependabot alerts, without Express 5 or React Router 7.',
+        changes: [
+            {
+                type: 'fixed',
+                title: 'Patched transitive vulnerabilities',
+                description: 'Bumped PostCSS, nanoid, js-yaml, flatted, brace-expansion, minimatch, glob, picomatch, lodash, ajv 6.15.0, uuid, Express 4.22.2 transitives (body-parser, qs, path-to-regexp 0.1.13), and react-router-dom 6.30.6.',
+            },
+            {
+                type: 'improved',
+                title: 'Pinned safe overrides',
+                description: 'Added npm overrides so nested copies stay on patched lines without jumping to breaking majors (path-to-regexp 8, React Router 7, minimatch 10, uuid 14).',
+            },
+        ],
+    },
+    {
         version: 'v1.0.2-beta',
         date: 'January 12, 2026',
         title: 'Security & Reliability Hardening',
