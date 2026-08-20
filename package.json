@@ -18,6 +18,9 @@
     "test:frontend": "vitest run",
     "test:backend": "npm --prefix codevibes-backend run test",
     "test:all": "npm run test:frontend && npm run test:backend",
+    "test:frontend:coverage": "vitest run --coverage",
+    "test:backend:coverage": "npm --prefix codevibes-backend run test:coverage",
+    "test:all:coverage": "npm run test:frontend:coverage && npm run test:backend:coverage",
     "build:frontend": "vite build",
     "build:backend": "npm --prefix codevibes-backend run build",
     "build:all": "npm run build:frontend && npm run build:backend",
@@ -33,7 +36,7 @@
     "check:guidance": "node scripts/check-guidance.mjs --strict",
     "check:guidance:advisory": "node scripts/check-guidance.mjs",
     "check:fast": "npm run lint:all && npm run typecheck && node scripts/test-affected.mjs",
-    "check:all": "npm run lint:all && npm run typecheck && npm run test:all && npm run build:all && npm run check:doc-links && npm run check:guidance && npm run check:pipeline-contract && npm run check:pipeline-docs && npm run check:structure && npm run check:complexity && npm run check:bundle-size",
+    "check:all": "npm run lint:all && npm run typecheck && npm run test:all:coverage && npm run build:all && npm run check:doc-links && npm run check:guidance && npm run check:pipeline-contract && npm run check:pipeline-docs && npm run check:structure && npm run check:complexity && npm run check:bundle-size",
     "ci": "npm run check:all"
   },
   "dependencies": {

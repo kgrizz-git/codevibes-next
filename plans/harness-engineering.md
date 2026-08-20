@@ -57,6 +57,7 @@ compatibility impact is agreed. The target interface is:
 |---|---|
 | `lint:frontend`, `lint:backend`, `lint:all` | lint the named boundary or both |
 | `test:frontend`, `test:backend`, `test:all` | run the named suite or both |
+| `test:frontend:coverage`, `test:backend:coverage`, `test:all:coverage` | run the named suite or both with coverage; CI uses the all-boundary form |
 | `build:frontend`, `build:backend`, `build:all` | produce both distributables explicitly |
 | `check:fast` | lint + typecheck + affected tests; no build or network |
 | `check:all` | lint + typecheck + full tests + builds + strict doc/guidance, structural, and complexity checks + advisory bundle check |

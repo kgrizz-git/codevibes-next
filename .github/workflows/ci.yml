@@ -28,7 +28,7 @@ jobs:
         run: npm ci
       - name: Install backend deps
         run: npm ci --prefix codevibes-backend
-      # Canonical command contract (lint:all + typecheck + tests + builds +
+      # Canonical command contract (lint:all + typecheck + coverage-enabled tests + builds +
       # doc-link + guidance + grandfathered structural/complexity budgets + bundle-size). CI is the
       # enforcement point; pre-commit/pre-push stay cheap.
       - name: Full check (canonical)

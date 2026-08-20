@@ -28,9 +28,11 @@ scripts remain supported for compatibility and local iteration.
 - `prepare` — activates Husky hooks
 - `lint:frontend`, `lint:backend`, `lint:all` — lint the named boundary or both
 - `test:frontend`, `test:backend`, `test:all` — run the named suite or both
+- `test:frontend:coverage`, `test:backend:coverage`, `test:all:coverage` —
+  run the named suite or both with Vitest text and JSON-summary coverage reports
 - `build:frontend`, `build:backend`, `build:all` — build the named boundary or both
 - `check:fast` — lint, typecheck, and affected tests (full suites without a base)
-- `check:all` / `ci` — full local and CI gate
+- `check:all` / `ci` — full local and CI gate; runs both suites with coverage
 - `repo:map` — generated, shallow navigation map
 - `check:doc-links` and `check:guidance` — strict documentation/guidance checks
 - `docs:pipeline-contract` — regenerate the source-owned review-pipeline facts page

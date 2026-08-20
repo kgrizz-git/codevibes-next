@@ -21,8 +21,9 @@ selection, token-cost, frontend analysis state).
 
 ## Decision
 
-- **No blocking global coverage threshold today.** Coverage is collected in CI
-  but does not gate merges at 0%.
+- **No blocking global coverage threshold today.** The canonical `npm run ci`
+  path runs `test:all:coverage`, collecting Vitest text and JSON-summary
+  coverage for both packages, but does not gate merges at 0%.
 - **Boundary-first, not global.** Add focused tests at high-risk boundaries
   before introducing any floor: backend CSRF/auth failure modes, analysis
   controller schemas, GitHub error handling, SSE framing/parser; pipeline file

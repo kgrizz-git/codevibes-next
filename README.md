@@ -268,7 +268,8 @@ vocabulary is in `plans/decisions/0001-verification-command-contract.md`.
 | Command (run from repo root unless noted) | What it does |
 |---|---|
 | `npm run dev` | Vite dev server (frontend) |
-| `npm run lint:all`, `test:all`, `build:all` | verify both packages by concern |
+| `npm run lint:all`, `test:all`, `build:all` | verify both packages by concern (`test:all` stays fast) |
+| `npm run test:all:coverage` | run both suites with text and JSON-summary coverage; included in `npm run ci` |
 | `npm run typecheck` | typecheck both packages without emitting files |
 | `npm run check:fast` | lint, typecheck, and affected tests (full suites if no comparison base exists) |
 | `npm run ci` | full local gate: checks, tests, builds, and harness validation |
