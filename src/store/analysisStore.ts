@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import {
+  API_KEY_STORAGE_KEY,
+  clearEncryptedSecret,
+  clearLegacyZustandApiKey,
+  peekLegacyZustandApiKey,
+  readEncryptedSecret,
+  writeEncryptedSecret,
+} from '@/lib/secretStorage';
 
 export interface AnalysisIssue {
   id: string;
@@ -34,7 +41,8 @@ export interface RepoInfo {
 
 export interface AnalysisState {
   apiKey: string | null;
-  setApiKey: (key: string | null) => void;
+  apiKeyHydrated: boolean;
+  setApiKey: (key: string | null) => Promise<void>;
   repoUrl: string;
   setRepoUrl: (url: string) => void;
   repoInfo: RepoInfo | null;
@@ -71,11 +79,39 @@ const initialPriorities: PriorityLevel[] = [
   { level: 3, name: 'Other Files', description: 'Tests, configs, utilities, documentation', files: [], status: 'pending', issues: [], tokenCount: 0 },
 ];
 
-export const useAnalysisStore = create<AnalysisState>()(
-  persist(
-    (set) => ({
+let apiKeyWriteChain: Promise<void> = Promise.resolve();
+let apiKeyMutationGeneration = 0;
+
+export const useAnalysisStore = create<AnalysisState>()((set) => ({
       apiKey: null,
-      setApiKey: (key) => set({ apiKey: key }),
+      apiKeyHydrated: false,
+      setApiKey: async (key) => {
+        apiKeyMutationGeneration += 1;
+        const generation = apiKeyMutationGeneration;
+
+        const run = apiKeyWriteChain.then(async () => {
+          if (generation !== apiKeyMutationGeneration) {
+            return;
+          }
+          if (key) {
+            await writeEncryptedSecret(API_KEY_STORAGE_KEY, key);
+            if (generation !== apiKeyMutationGeneration) {
+              return;
+            }
+            clearLegacyZustandApiKey();
+          } else {
+            clearEncryptedSecret(API_KEY_STORAGE_KEY);
+            clearLegacyZustandApiKey();
+            if (generation !== apiKeyMutationGeneration) {
+              return;
+            }
+          }
+          set({ apiKey: key });
+        });
+
+        apiKeyWriteChain = run.catch(() => {});
+        await run;
+      },
       repoUrl: '',
       setRepoUrl: (url) => set({ repoUrl: url }),
       repoInfo: null,
@@ -109,7 +145,49 @@ export const useAnalysisStore = create<AnalysisState>()(
         isAnalyzing: false, currentPriority: null, priorities: initialPriorities, vibeScore: 0,
         totalTokensUsed: 0, filesScanned: 0, elapsedTime: 0, streamingContent: '', awaitingApproval: null, repoInfo: null,
       }),
-    }),
-    { name: 'codevibes-storage', partialize: (state) => ({ apiKey: state.apiKey }) }
-  )
-);
+}));
+
+/**
+ * Load an encrypted (or legacy plaintext) API key into memory once at startup.
+ */
+export async function hydrateStoredApiKey(): Promise<void> {
+  const generationAtStart = apiKeyMutationGeneration;
+  try {
+    const stored = await readEncryptedSecret(API_KEY_STORAGE_KEY);
+    if (
+      stored &&
+      useAnalysisStore.getState().apiKey === null &&
+      generationAtStart === apiKeyMutationGeneration
+    ) {
+      useAnalysisStore.setState({ apiKey: stored });
+      return;
+    }
+    const legacy = peekLegacyZustandApiKey();
+    if (
+      legacy &&
+      useAnalysisStore.getState().apiKey === null &&
+      generationAtStart === apiKeyMutationGeneration
+    ) {
+      await useAnalysisStore.getState().setApiKey(legacy);
+    }
+  } catch {
+    // Storage blocked or corrupt — leave apiKey null; UI can prompt again.
+  } finally {
+    useAnalysisStore.setState({ apiKeyHydrated: true });
+  }
+}
+
+export type AnalysisStoreTestHooks = {
+  resetApiKeyWriteStateForTests: () => void;
+};
+
+export const analysisStoreTestHooks: AnalysisStoreTestHooks | undefined =
+  import.meta.env.MODE === 'test'
+    ? {
+        resetApiKeyWriteStateForTests: () => {
+          apiKeyWriteChain = Promise.resolve();
+          apiKeyMutationGeneration = 0;
+          useAnalysisStore.setState({ apiKey: null, apiKeyHydrated: false });
+        },
+      }
+    : undefined;

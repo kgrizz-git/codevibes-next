@@ -3,7 +3,7 @@
 //
 // Reads codevibes-backend/package.json so /api/health, the root
 // payload, and the GitHub user-agent stay aligned with the
-// documented release (currently 1.0.3). Uses createRequire so
+// documented release. Uses createRequire so
 // the JSON file can live outside tsc's rootDir (src/).
 // ============================================================
 

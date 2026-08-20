@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Key, ExternalLink, CheckCircle2, XCircle, Loader2, Calculator, ArrowRight, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,11 +11,18 @@ import { cn } from '@/lib/utils';
 
 export default function SetupPage() {
   const navigate = useNavigate();
-  const { apiKey, setApiKey, repoUrl } = useAnalysisStore();
-  const [inputKey, setInputKey] = useState(apiKey || '');
+  const { apiKey, apiKeyHydrated, setApiKey, repoUrl } = useAnalysisStore();
+  const [inputKey, setInputKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  useEffect(() => {
+    if (!apiKeyHydrated || !apiKey) {
+      return;
+    }
+    setInputKey((current) => (current === '' ? apiKey : current));
+  }, [apiKeyHydrated, apiKey]);
 
   const [fileCount, setFileCount] = useState(50);
   const avgTokensPerFile = 500;
@@ -23,13 +30,19 @@ export default function SetupPage() {
   const estimatedTokens = fileCount * avgTokensPerFile;
   const estimatedCost = (estimatedTokens / 1000) * costPer1kTokens;
 
-  const handleSaveKey = () => {
+  const handleSaveKey = async (): Promise<boolean> => {
     if (!inputKey.trim()) {
       toast.error('Please enter an API key');
-      return;
+      return false;
     }
-    setApiKey(inputKey.trim());
-    toast.success('API key saved');
+    try {
+      await setApiKey(inputKey.trim());
+      toast.success('API key saved');
+      return true;
+    } catch {
+      toast.error('Could not save API key in this browser');
+      return false;
+    }
   };
 
   const handleTestConnection = async () => {
@@ -61,12 +74,14 @@ export default function SetupPage() {
     }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!inputKey.trim()) {
       toast.error('Please enter and save your API key first');
       return;
     }
-    handleSaveKey();
+    if (!(await handleSaveKey())) {
+      return;
+    }
     navigate(repoUrl ? '/analyze' : '/');
   };
 
@@ -130,11 +145,15 @@ export default function SetupPage() {
                   {apiKey && (
                     <Button
                       variant="destructive"
-                      onClick={() => {
-                        setApiKey(null);
-                        setInputKey('');
-                        setConnectionStatus('idle');
-                        toast.success('API key deleted');
+                      onClick={async () => {
+                        try {
+                          await setApiKey(null);
+                          setInputKey('');
+                          setConnectionStatus('idle');
+                          toast.success('API key deleted');
+                        } catch {
+                          toast.error('Could not delete the stored API key');
+                        }
                       }}
                       className="px-4"
                     >

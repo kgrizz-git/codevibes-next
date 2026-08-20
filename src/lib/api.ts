@@ -2,7 +2,9 @@
 // CodeVibes API Client - Frontend integration with backend
 // ============================================================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { rememberCsrfToken, withCsrfHeaders } from './csrf';
+
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : 'http://localhost:3001');
 
 // -------------------- Types --------------------
 
@@ -91,12 +93,11 @@ export interface SSEEvent {
  * Validate a GitHub repository URL
  */
 export async function validateRepo(repoUrl: string): Promise<ValidateRepoResponse> {
-    const response = await fetch(`${API_BASE_URL}/api/validate-repo`, {
+    const response = await fetch(`${API_BASE_URL}/api/validate-repo`, await withCsrfHeaders(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repoUrl }),
-        credentials: 'include',  // Send cookies for auth
-    });
+    }));
 
     return response.json();
 }
@@ -137,13 +138,12 @@ export function analyzeRepository(
     // Use fetch for SSE since native EventSource doesn't support POST
     const runAnalysis = async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+            const response = await fetch(`${API_BASE_URL}/api/analyze`, await withCsrfHeaders(API_BASE_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ repoUrl, apiKey, priority }),
                 signal: controller.signal,
-                credentials: 'include',  // Send cookies for auth
-            });
+            }));
 
             if (!response.ok) {
                 const error = await response.json();
@@ -229,9 +229,11 @@ export function analyzeRepository(
 /**
  * Check API health
  */
-export async function checkHealth(): Promise<{ status: string; version: string }> {
-    const response = await fetch(`${API_BASE_URL}/api/health`);
-    return response.json();
+export async function checkHealth(): Promise<{ status: string; version: string; csrfToken?: string | null }> {
+    const response = await fetch(`${API_BASE_URL}/api/health`, { credentials: 'include' });
+    const body = await response.json() as { status: string; version: string; csrfToken?: string | null };
+    rememberCsrfToken(body.csrfToken);
+    return body;
 }
 
 // -------------------- Auth API --------------------
@@ -281,22 +283,20 @@ export function getGitHubLoginUrl(): string {
  * Logout current user
  */
 export async function logout(): Promise<void> {
-    await fetch(`${API_BASE_URL}/api/auth/logout`, {
+    await fetch(`${API_BASE_URL}/api/auth/logout`, await withCsrfHeaders(API_BASE_URL, {
         method: 'POST',
-        credentials: 'include',
-    });
+    }));
 }
 
 /**
  * Save DeepSeek API key
  */
 export async function saveDeepSeekKey(apiKey: string): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/auth/deepseek-key`, {
+    const response = await fetch(`${API_BASE_URL}/api/auth/deepseek-key`, await withCsrfHeaders(API_BASE_URL, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey }),
-        credentials: 'include',
-    });
+    }));
 
     return response.ok;
 }
@@ -379,12 +379,11 @@ export async function saveAnalysis(data: {
     durationMs: number;
     issues: AnalysisIssue[];
 }): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/history`, {
+    const response = await fetch(`${API_BASE_URL}/api/history`, await withCsrfHeaders(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-        credentials: 'include',
-    });
+    }));
 
     return response.ok;
 }
@@ -393,10 +392,9 @@ export async function saveAnalysis(data: {
  * Delete analysis from history
  */
 export async function deleteAnalysis(id: string): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/history/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/history/${id}`, await withCsrfHeaders(API_BASE_URL, {
         method: 'DELETE',
-        credentials: 'include',
-    });
+    }));
 
     return response.ok;
 }

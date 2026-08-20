@@ -20,7 +20,7 @@ export function Footer() {
                 Built with DeepSeek v3
               </span>
               <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted">
-                v1.0.3-beta
+                v1.0.4-beta
               </span>
             </div>
           </div>

@@ -2,8 +2,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { Issue } from "@/components/IssueCard";
 import { getStoredApiKey } from "@/components/SettingsModal";
-
-const API_BASE_URL = 'http://localhost:3001';
+import { useAnalysisStore } from "@/store/analysisStore";
+import { withCsrfHeaders } from "@/lib/csrf";
+import { API_BASE_URL } from "@/lib/api";
 
 interface AnalysisResult {
   issues: Issue[];
@@ -20,7 +21,7 @@ export function useAnalysis() {
       return null;
     }
 
-    const apiKey = getStoredApiKey();
+    const apiKey = useAnalysisStore.getState().apiKey ?? (await getStoredApiKey());
     if (!apiKey) {
       toast.error("API key required", {
         description: "Please add your DeepSeek API key in Settings",
@@ -33,7 +34,7 @@ export function useAnalysis() {
 
     try {
       // Use the new backend API for code analysis
-      const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+      const response = await fetch(`${API_BASE_URL}/api/analyze`, await withCsrfHeaders(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -42,7 +43,7 @@ export function useAnalysis() {
           repoUrl: 'code-snippet',
           priority: 1
         }),
-      });
+      }));
 
       if (!response.ok) {
         const errorData = await response.json();

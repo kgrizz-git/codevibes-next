@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,35 +11,58 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Key } from "lucide-react";
 import { toast } from "sonner";
+import { useAnalysisStore } from "@/store/analysisStore";
+import { API_KEY_STORAGE_KEY, readEncryptedSecret } from "@/lib/secretStorage";
 
 interface SettingsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-const API_KEY_STORAGE_KEY = "vibeguard_deepseek_api_key";
-
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
+  const persistApiKey = useAnalysisStore((state) => state.setApiKey);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const editedRef = useRef(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(API_KEY_STORAGE_KEY);
-    if (stored) {
-      setApiKey(stored);
+    if (!open) {
+      return;
     }
+    editedRef.current = false;
+    let cancelled = false;
+    void readEncryptedSecret(API_KEY_STORAGE_KEY)
+      .then((stored) => {
+        if (cancelled || editedRef.current) {
+          return;
+        }
+        setApiKey(stored ?? "");
+      })
+      .catch(() => {
+        if (cancelled || editedRef.current) {
+          return;
+        }
+        setApiKey("");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!apiKey.trim()) {
       toast.error("API key is required");
       return;
     }
-    localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
-    toast.success("API key saved", {
-      description: "Your DeepSeek API key has been stored securely.",
-    });
-    onOpenChange(false);
+    try {
+      await persistApiKey(apiKey.trim());
+      toast.success("API key saved", {
+        description: "Your DeepSeek API key is encrypted before it is stored in this browser.",
+      });
+      onOpenChange(false);
+    } catch {
+      toast.error("Could not save API key in this browser");
+    }
   };
 
   return (
@@ -62,7 +85,10 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                 id="apiKey"
                 type={showKey ? "text" : "password"}
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={(e) => {
+                  editedRef.current = true;
+                  setApiKey(e.target.value);
+                }}
                 placeholder="sk-..."
                 className="pr-10 font-mono text-sm bg-input border-border"
               />
@@ -110,6 +136,6 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   );
 }
 
-export function getStoredApiKey(): string | null {
-  return localStorage.getItem(API_KEY_STORAGE_KEY);
+export async function getStoredApiKey(): Promise<string | null> {
+  return readEncryptedSecret(API_KEY_STORAGE_KEY);
 }
