@@ -33,12 +33,12 @@ describe('isAllowedOrigin (env overrides)', () => {
         vi.resetModules();
     });
 
-    it('allows any origin when ALLOWED_ORIGINS includes *', async () => {
+    it('does not treat ALLOWED_ORIGINS=* as a wildcard', async () => {
         vi.stubEnv('ALLOWED_ORIGINS', '*');
         vi.resetModules();
         const mod = await import('./origins.js');
         expect(mod.ALLOWED_ORIGINS).toEqual(['*']);
-        expect(mod.isAllowedOrigin('http://evil.example')).toBe(true);
+        expect(mod.isAllowedOrigin('http://evil.example')).toBe(false);
     });
 
     it('drops empty entries from ALLOWED_ORIGINS', async () => {

@@ -88,7 +88,7 @@ export default function ApiReferencePage() {
                             </div>
                             <p className="text-sm text-muted-foreground">Check if the API server is running.</p>
                         </div>
-                        <CodeBlock language="bash" code={`curl http://localhost:3001/api/health`} />
+                        <CodeBlock language="bash" code={`curl -c /tmp/csrf.jar -b /tmp/csrf.jar http://localhost:3001/api/health`} />
                         <p className="text-sm text-muted-foreground mt-4">Response:</p>
                         <CodeBlock language="json" code={`{
   "status": "ok",
@@ -101,19 +101,25 @@ export default function ApiReferencePage() {
                     <section className="mb-12 animate-fade-in">
                         <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
                             <Shield className="w-5 h-5 text-primary" />
-                            CSRF (browser clients)
+                            CSRF (browser and curl)
                         </h2>
                         <p className="text-sm text-muted-foreground mb-4">
-                            Cookie-authenticated POST, PUT, PATCH, and DELETE from a browser must send the
+                            Cookie-authenticated POST, PUT, PATCH, and DELETE must send the
                             <code className="mx-1 font-mono text-xs">csrf_token</code> cookie value as
-                            <code className="mx-1 font-mono text-xs">X-CSRF-Token</code>. Because the UI and
-                            API are different origins, read
-                            <code className="mx-1 font-mono text-xs">csrfToken</code> from
-                            <code className="mx-1 font-mono text-xs">GET /api/health</code> instead of
-                            <code className="mx-1 font-mono text-xs">document.cookie</code>.
-                            All mutating requests, including curl, must send
-                            <code className="mx-1 font-mono text-xs">X-CSRF-Token</code> matching the cookie after priming from health.
+                            <code className="mx-1 font-mono text-xs">X-CSRF-Token</code>. Allowlisted browser
+                            origins receive
+                            <code className="mx-1 font-mono text-xs">csrfToken</code> in the
+                            <code className="mx-1 font-mono text-xs">GET /api/health</code> JSON (use
+                            <code className="mx-1 font-mono text-xs">withCsrfHeaders</code> in the SPA).
+                            curl has no Origin header but must reuse the cookie jar from health and send the
+                            matching header on mutations.
                         </p>
+                        <p className="text-sm text-muted-foreground mb-2">Prime the cookie and read the token:</p>
+                        <CodeBlock language="bash" code={`curl -c /tmp/csrf.jar -b /tmp/csrf.jar http://localhost:3001/api/health`} />
+                        <p className="text-sm text-muted-foreground mb-2 mt-4">Example mutation (replace TOKEN with csrfToken from the response):</p>
+                        <CodeBlock language="bash" code={`curl -b /tmp/csrf.jar -X POST http://localhost:3001/api/auth/logout \\
+  -H "Content-Type: application/json" \\
+  -H "X-CSRF-Token: TOKEN"`} />
                     </section>
 
                     {/* Validate Repository */}

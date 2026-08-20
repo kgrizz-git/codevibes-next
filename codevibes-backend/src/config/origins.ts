@@ -13,12 +13,12 @@ export const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || DEFAULT_ORIGINS)
     .filter(Boolean);
 
 /**
- * Missing Origin (curl, same-origin GET) is allowed.
- * Wildcard * in ALLOWED_ORIGINS keeps an explicit opt-in to reflect any origin.
+ * Missing Origin (curl, same-origin GET) is allowed for CORS reflection.
+ * Only explicitly listed origins pass; `*` is not supported.
  */
 export function isAllowedOrigin(origin: string | undefined): boolean {
     if (!origin) {
         return true;
     }
-    return ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes('*');
+    return ALLOWED_ORIGINS.includes(origin);
 }

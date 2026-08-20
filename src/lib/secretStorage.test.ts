@@ -97,4 +97,17 @@ describe('secretStorage', () => {
     hooks.resetMemoryWrapCacheForTests();
     expect(await readEncryptedSecret(API_KEY_STORAGE_KEY)).toBe('sk-fallback-wrap');
   });
+
+  it('persists one wrapping key when concurrent callers race through IndexedDB', async () => {
+    const raceLoad = async (label: string) => {
+      hooks.resetMemoryWrapCacheForTests();
+      return encryptSecret(label);
+    };
+
+    const [a, b] = await Promise.all([raceLoad('sk-race-a'), raceLoad('sk-race-b')]);
+
+    hooks.resetMemoryWrapCacheForTests();
+    expect(await decryptSecret(a)).toBe('sk-race-a');
+    expect(await decryptSecret(b)).toBe('sk-race-b');
+  });
 });

@@ -75,34 +75,57 @@ function openWrapDb(): Promise<IDBDatabase> {
     });
 }
 
-async function idbReadRaw(): Promise<Uint8Array | null> {
-    if (!idbAvailable()) {
+function normalizeRawBytes(value: unknown): Uint8Array | null {
+    if (value instanceof Uint8Array && value.length === 32) {
+        return value;
+    }
+    if (value instanceof ArrayBuffer && value.byteLength === 32) {
+        return new Uint8Array(value);
+    }
+    if (ArrayBuffer.isView(value)) {
+        const view = value as ArrayBufferView;
+        if (view.byteLength === 32) {
+            return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+        }
+    }
+    return null;
+}
+
+/**
+ * Load or create the wrapping key in one readwrite transaction so concurrent
+ * tabs serialize on IndexedDB and reuse the same stored key.
+ */
+async function idbLoadOrCreateRaw(seed?: Uint8Array): Promise<Uint8Array | null> {
+    if (!idbAvailable() || idbWriteBlockedForTests) {
         return null;
     }
     try {
         const db = await openWrapDb();
         try {
             return await new Promise((resolve, reject) => {
-                const tx = db.transaction(IDB_STORE, 'readonly');
-                const req = tx.objectStore(IDB_STORE).get(IDB_WRAP_KEY);
-                req.onsuccess = () => {
-                    const value = req.result;
-                    if (value instanceof Uint8Array) {
-                        resolve(value);
+                const tx = db.transaction(IDB_STORE, 'readwrite');
+                const store = tx.objectStore(IDB_STORE);
+                let pending: Uint8Array | null = null;
+                const getReq = store.get(IDB_WRAP_KEY);
+                getReq.onerror = () => reject(getReq.error ?? new Error('IndexedDB read failed'));
+                getReq.onsuccess = () => {
+                    const existing = normalizeRawBytes(getReq.result);
+                    if (existing) {
+                        pending = existing;
                         return;
                     }
-                    if (value instanceof ArrayBuffer) {
-                        resolve(new Uint8Array(value));
-                        return;
-                    }
-                    if (ArrayBuffer.isView(value)) {
-                        const view = value as ArrayBufferView;
-                        resolve(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
-                        return;
-                    }
-                    resolve(null);
+                    const raw = seed ? new Uint8Array(seed) : globalThis.crypto.getRandomValues(new Uint8Array(32));
+                    store.put(raw, IDB_WRAP_KEY);
+                    pending = raw;
                 };
-                req.onerror = () => reject(req.error ?? new Error('IndexedDB read failed'));
+                tx.oncomplete = () => {
+                    if (pending) {
+                        resolve(pending);
+                    } else {
+                        reject(new Error('IndexedDB load-or-create finished without a key'));
+                    }
+                };
+                tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'));
             });
         } finally {
             db.close();
@@ -144,19 +167,30 @@ async function persistRawWrappingKey(raw: Uint8Array): Promise<void> {
 }
 
 async function loadRawWrappingKeyInternal(): Promise<Uint8Array> {
-    const fromIdb = await idbReadRaw();
-    if (fromIdb && fromIdb.length === 32) {
-        return fromIdb;
-    }
-
     const legacy = readLegacyLocalWrap();
     if (legacy) {
-        await persistRawWrappingKey(legacy);
+        const fromIdb = await idbLoadOrCreateRaw(legacy);
+        if (fromIdb) {
+            localStorage.removeItem(LEGACY_DEVICE_KEY_STORAGE);
+            return fromIdb;
+        }
+        writeLegacyLocalWrap(legacy);
         return legacy;
     }
 
+    const fromIdb = await idbLoadOrCreateRaw();
+    if (fromIdb) {
+        localStorage.removeItem(LEGACY_DEVICE_KEY_STORAGE);
+        return fromIdb;
+    }
+
+    const local = readLegacyLocalWrap();
+    if (local) {
+        return local;
+    }
+
     const raw = globalThis.crypto.getRandomValues(new Uint8Array(32));
-    await persistRawWrappingKey(raw);
+    writeLegacyLocalWrap(raw);
     return raw;
 }
 

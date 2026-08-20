@@ -429,7 +429,7 @@ function calculateVibeScore(issues: Issue[]): number {
 ⚠️ **Deferred**: React Router 7 and path-to-regexp 8 remain out of scope (breaking majors). Two Router advisories that only patch in 7.18 stay open.
 
 ### [v1.0.4] - 2026-08-19
-🔒 **CSRF**: POST/PUT/PATCH/DELETE must send `X-CSRF-Token` matching the `csrf_token` cookie. `GET /api/health` returns `csrfToken` for browser clients and curl.
+🔒 **CSRF**: POST/PUT/PATCH/DELETE must send `X-CSRF-Token` matching the `csrf_token` cookie. Allowlisted browser origins receive `csrfToken` from `GET /api/health`; curl (no Origin) must prime with `-c`/`-b` and send the header.
 🔒 **Auth cookie**: `auth_token` is AES-256-GCM encrypted; legacy JWTs still verify.
 🔒 **API keys**: DeepSeek keys are encrypted in localStorage; old plaintext keys migrate on read.
 

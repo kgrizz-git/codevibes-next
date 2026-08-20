@@ -24,12 +24,12 @@ const changelogData = [
             {
                 type: 'fixed',
                 title: 'Encrypted API key storage',
-                description: 'DeepSeek keys are encrypted with Web Crypto before localStorage. The wrapping key is stored in IndexedDB, not beside the ciphertext. Legacy plaintext keys are migrated on read.',
+                description: 'DeepSeek keys are encrypted with Web Crypto before localStorage. The wrapping key is stored in IndexedDB when available, with localStorage as fallback when IndexedDB is blocked. Legacy plaintext keys are migrated on read.',
             },
             {
                 type: 'fixed',
                 title: 'CORS allowlist',
-                description: 'Credentialed CORS no longer reflects unlisted origins, so sibling ports cannot read csrfToken from GET /api/health.',
+                description: 'Credentialed CORS reflects only origins in ALLOWED_ORIGINS, so unlisted sibling ports cannot read csrfToken from GET /api/health.',
             },
         ],
     },
