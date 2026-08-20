@@ -88,6 +88,13 @@ frontend — none in the frozen file.
   - Results view: show the server-computed `cost` (not the hardcoded `0.14` sites in
     `AnalyzePage.tsx:391,1042`), plus an effort badge. Coordinate with provider plan Step 2
     ("frontend must stop computing cost").
+  - **Review-scope surface (paired with Plan A):** in the pre-analysis view, show *what is being
+    reviewed* — active ignore patterns, the recognized language/extension set, priority rules, a
+    per-file "matched `<rule>` → Pn" hint, and an "N files ignored" count with drill-down. This
+    makes the file/folder patterns passed visible in-app (not just in `docs/review-pipeline/`),
+    and sits next to the `EffortSelector` so users understand both *what* and *how deep*. Derive it
+    from the backend `fileFilter` rules (via an endpoint or the contract doc), never a client-only
+    copy that can drift.
   - **Do NOT add effort to `useAnalysis.ts`** — that code-snippet path is deleted by provider plan
     Step 3.
 - **Tests:** effort on both `complete` sites; `standard` payload shape identical to today (minus
