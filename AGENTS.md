@@ -14,3 +14,9 @@
 ## Security
 
 - Credentialed CORS only reflects origins listed in `ALLOWED_ORIGINS` (default localhost/127.0.0.1 on 8080/5173/3000). Unlisted browser origins do not receive credentialed responses or `csrfToken` on `/api/health`. Requests with no `Origin` header (curl) still receive `csrfToken` in JSON but must send `X-CSRF-Token` on mutations. In local Vite, `/api` is proxied so CSRF cookies are first-party. Cookie-authenticated POST/PUT/PATCH/DELETE must send `X-CSRF-Token` matching `csrf_token` (curl: `GET /api/health` with `-c`/`-b` first). The SPA uses `withCsrfHeaders`. Never mint-and-accept a CSRF token on the same unsafe request.
+
+## Documentation / Pipeline Reference
+
+- The analysis pipeline is documented in `docs/review-pipeline/` (index: `docs/review-pipeline.md`). The pages cover file selection (`fileFilter.ts`), discovery (`githubService.ts`), orchestration & SSE (`analysisService.ts`), the reviewing agent (`deepseekService.ts`), the cost model (`tokenCounter.ts`), and a forward-looking extension-hooks page.
+- **Keep these docs in sync with the code.** Whenever you change the review pipeline — file-selection rules, ignore/priority patterns, the GitHub fetch or SSE flow, the agent prompts or their JSON schema, generation params (`temperature`/`max_tokens`), cost/pricing logic, or the `MAX_FILES_PER_PRIORITY` knob — update the corresponding `docs/review-pipeline/` page. Treat them as the spec; `plans/TO_DO.md` item 5 (broader language & pattern coverage + effort/detail layers) explicitly depends on them.
+- `deepseekService.ts` must stay byte-for-byte intact until `USE_LEGACY_PROVIDER` is retired (see `plans/TO_DO.md` item 6 / provider plan Step 1) — document changes there rather than editing the file.
