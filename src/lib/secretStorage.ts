@@ -91,6 +91,39 @@ function normalizeRawBytes(value: unknown): Uint8Array | null {
     return null;
 }
 
+async function idbReadRaw(): Promise<Uint8Array | null> {
+    if (!idbAvailable()) {
+        return null;
+    }
+    try {
+        const db = await openWrapDb();
+        try {
+            return await new Promise((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE, 'readonly');
+                const req = tx.objectStore(IDB_STORE).get(IDB_WRAP_KEY);
+                req.onsuccess = () => resolve(normalizeRawBytes(req.result));
+                req.onerror = () => reject(req.error ?? new Error('IndexedDB read failed'));
+            });
+        } finally {
+            db.close();
+        }
+    } catch {
+        return null;
+    }
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) {
+        return false;
+    }
+    for (let i = 0; i < a.length; i += 1) {
+        if (a[i] !== b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
  * Load or create the wrapping key in one readwrite transaction so concurrent
  * tabs serialize on IndexedDB and reuse the same stored key.
@@ -168,13 +201,24 @@ async function persistRawWrappingKey(raw: Uint8Array): Promise<void> {
 
 async function loadRawWrappingKeyInternal(): Promise<Uint8Array> {
     const legacy = readLegacyLocalWrap();
+    const idbExisting = await idbReadRaw();
+
     if (legacy) {
+        if (idbExisting && !bytesEqual(idbExisting, legacy)) {
+            // IndexedDB recovered with a stale key while the active fallback lives in localStorage.
+            await idbWriteRaw(legacy);
+            localStorage.removeItem(LEGACY_DEVICE_KEY_STORAGE);
+            return legacy;
+        }
+        if (idbExisting) {
+            localStorage.removeItem(LEGACY_DEVICE_KEY_STORAGE);
+            return idbExisting;
+        }
         const fromIdb = await idbLoadOrCreateRaw(legacy);
         if (fromIdb) {
             localStorage.removeItem(LEGACY_DEVICE_KEY_STORAGE);
             return fromIdb;
         }
-        writeLegacyLocalWrap(legacy);
         return legacy;
     }
 

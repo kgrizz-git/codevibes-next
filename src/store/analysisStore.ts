@@ -79,17 +79,38 @@ const initialPriorities: PriorityLevel[] = [
   { level: 3, name: 'Other Files', description: 'Tests, configs, utilities, documentation', files: [], status: 'pending', issues: [], tokenCount: 0 },
 ];
 
+let apiKeyWriteChain: Promise<void> = Promise.resolve();
+let apiKeyMutationGeneration = 0;
+
 export const useAnalysisStore = create<AnalysisState>()((set) => ({
       apiKey: null,
       apiKeyHydrated: false,
       setApiKey: async (key) => {
-        if (key) {
-          await writeEncryptedSecret(API_KEY_STORAGE_KEY, key);
-          clearLegacyZustandApiKey();
-        } else {
-          clearEncryptedSecret(API_KEY_STORAGE_KEY);
-        }
-        set({ apiKey: key });
+        apiKeyMutationGeneration += 1;
+        const generation = apiKeyMutationGeneration;
+
+        const run = apiKeyWriteChain.then(async () => {
+          if (generation !== apiKeyMutationGeneration) {
+            return;
+          }
+          if (key) {
+            await writeEncryptedSecret(API_KEY_STORAGE_KEY, key);
+            if (generation !== apiKeyMutationGeneration) {
+              return;
+            }
+            clearLegacyZustandApiKey();
+          } else {
+            clearEncryptedSecret(API_KEY_STORAGE_KEY);
+            clearLegacyZustandApiKey();
+            if (generation !== apiKeyMutationGeneration) {
+              return;
+            }
+          }
+          set({ apiKey: key });
+        });
+
+        apiKeyWriteChain = run.catch(() => {});
+        await run;
       },
       repoUrl: '',
       setRepoUrl: (url) => set({ repoUrl: url }),
@@ -130,14 +151,23 @@ export const useAnalysisStore = create<AnalysisState>()((set) => ({
  * Load an encrypted (or legacy plaintext) API key into memory once at startup.
  */
 export async function hydrateStoredApiKey(): Promise<void> {
+  const generationAtStart = apiKeyMutationGeneration;
   try {
     const stored = await readEncryptedSecret(API_KEY_STORAGE_KEY);
-    if (stored) {
+    if (
+      stored &&
+      useAnalysisStore.getState().apiKey === null &&
+      generationAtStart === apiKeyMutationGeneration
+    ) {
       useAnalysisStore.setState({ apiKey: stored });
       return;
     }
     const legacy = peekLegacyZustandApiKey();
-    if (legacy) {
+    if (
+      legacy &&
+      useAnalysisStore.getState().apiKey === null &&
+      generationAtStart === apiKeyMutationGeneration
+    ) {
       await useAnalysisStore.getState().setApiKey(legacy);
     }
   } catch {
@@ -146,3 +176,18 @@ export async function hydrateStoredApiKey(): Promise<void> {
     useAnalysisStore.setState({ apiKeyHydrated: true });
   }
 }
+
+export type AnalysisStoreTestHooks = {
+  resetApiKeyWriteStateForTests: () => void;
+};
+
+export const analysisStoreTestHooks: AnalysisStoreTestHooks | undefined =
+  import.meta.env.MODE === 'test'
+    ? {
+        resetApiKeyWriteStateForTests: () => {
+          apiKeyWriteChain = Promise.resolve();
+          apiKeyMutationGeneration = 0;
+          useAnalysisStore.setState({ apiKey: null, apiKeyHydrated: false });
+        },
+      }
+    : undefined;

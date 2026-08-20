@@ -110,4 +110,17 @@ describe('secretStorage', () => {
     expect(await decryptSecret(a)).toBe('sk-race-a');
     expect(await decryptSecret(b)).toBe('sk-race-b');
   });
+
+  it('keeps the active localStorage fallback when IndexedDB recovers with a stale key', async () => {
+    await hooks.replaceWrappingKeyForTests(new Uint8Array(32).fill(0xaa));
+    hooks.blockIdbWritesForTests(true);
+    hooks.resetMemoryWrapCacheForTests();
+
+    await writeEncryptedSecret(API_KEY_STORAGE_KEY, 'sk-recovery');
+    expect(localStorage.getItem('vibeguard_device_key')).toMatch(/^[0-9a-f]{64}$/i);
+
+    hooks.blockIdbWritesForTests(false);
+    hooks.resetMemoryWrapCacheForTests();
+    expect(await readEncryptedSecret(API_KEY_STORAGE_KEY)).toBe('sk-recovery');
+  });
 });
