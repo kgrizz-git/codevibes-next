@@ -26,8 +26,9 @@ How CodeVibes decides which files are reviewed, and at what priority.
 Order is **ignore → P1 → P2 → P3**.
 
 ### Priority 1 — Security & Secrets
-- Exact policy inputs: `.env`, `.env.local/.production/.development/.test`, `.envrc`, `*.tf`,
-  `*.tfvars`, and `*.sql`. `.env.example`, `.env.template`, and `.env.sample` are not selected.
+- Exact policy inputs: `.env`, `.envrc`, `*.tf`, `*.tfvars`, `*.tf.json`, `*.tfvars.json`, and
+  `*.sql`. Dotenv mode files (`.env.<mode>[.<mode>...]`) are also P1 unless any mode segment is
+  `example`, `template`, or `sample`; those variants are not selected.
 - Source-gated security/config directories: auth, authentication, authorization, security, crypto,
   secrets, config/configs/configuration, middleware, database/db/repositories/queries/migrations,
   access-control, oauth, jwt, session, iam, and vault.

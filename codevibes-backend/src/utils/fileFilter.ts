@@ -102,19 +102,21 @@ const SOURCE_EXTENSIONS = new Set([
 // -------------------- Priority 1: Security Critical --------------------
 // These intentionally support the deliberate non-source configuration inputs.
 const PRIORITY_1_DIRECT_PATTERNS = [
-    // Environment files (do not broaden to .env.*; examples remain unselected)
+    // Exact environment policy files. Mode files are handled separately so
+    // examples/templates never consume a priority-1 review slot.
     '.env',
-    '.env.local',
-    '.env.production',
-    '.env.development',
-    '.env.test',
     '.envrc',
 
     // Infrastructure and database policy
     '**/*.tf',
     '**/*.tfvars',
+    '**/*.tf.json',
+    '**/*.tfvars.json',
     '**/*.sql',
 ];
+
+const DOTENV_MODE_FILE_PATTERN = /^\.env(?:\.[^./]+)+$/;
+const NON_DEPLOYABLE_DOTENV_SEGMENTS = new Set(['example', 'template', 'sample']);
 
 // Directory and filename conventions are source-gated. Without this guard,
 // minimatch's matchBase option can elevate an unrelated artifact named "main",
@@ -306,6 +308,16 @@ function matchesSourcePattern(filePath: string, patterns: string[]): boolean {
     return isRecognizedSourceFile(filePath) && matchesAnyPattern(filePath, patterns);
 }
 
+function isDeployableDotenvModeFile(filePath: string): boolean {
+    const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
+    if (!DOTENV_MODE_FILE_PATTERN.test(fileName)) return false;
+
+    return fileName
+        .split('.')
+        .slice(2)
+        .every(segment => !NON_DEPLOYABLE_DOTENV_SEGMENTS.has(segment.toLowerCase()));
+}
+
 /**
  * Check if a file should be ignored
  */
@@ -326,6 +338,7 @@ export function getFilePriority(filePath: string): PriorityLevel | null {
     // Check Priority 1 (Security Critical)
     if (
         matchesAnyPattern(filePath, PRIORITY_1_DIRECT_PATTERNS) ||
+        isDeployableDotenvModeFile(filePath) ||
         matchesSourcePattern(filePath, PRIORITY_1_SOURCE_DIRECTORY_PATTERNS) ||
         matchesSourcePattern(filePath, PRIORITY_1_SOURCE_FILENAME_PATTERNS)
     ) {

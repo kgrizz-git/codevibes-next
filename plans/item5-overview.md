@@ -1,6 +1,7 @@
 # Plans: Item 5 — Broader Language Coverage and Effort Layers
 
-> **Status:** REVIEWED — ready to implement in the stated order.
+> status: accepted
+> **Review state:** ready to implement in the stated order.
 > **Prerequisite:** the review-pipeline reference in `docs/review-pipeline/` remains the
 > implementation spec. `deepseekService.ts` must remain byte-for-byte intact until the provider
 > migration retires `USE_LEGACY_PROVIDER`.

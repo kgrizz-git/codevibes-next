@@ -1,6 +1,7 @@
 # Plan B (Item 5) — Selectable Effort / Detail Layers
 
-> **Status:** REVIEWED — split around the legacy-provider constraint.
+> status: accepted
+> **Review state:** split around the legacy-provider constraint.
 > **Risk:** High: request validation, SSE, estimation, persisted history, and the analysis UI all
 > change together.
 

@@ -2,18 +2,19 @@ import { cn } from '@/lib/utils';
 import type { EffortLevel } from '@/lib/api';
 
 const options: Array<{ value: EffortLevel; title: string; description: string }> = [
-  { value: 'quick', title: 'Quick', description: 'Up to 5 files per priority' },
-  { value: 'standard', title: 'Standard', description: 'Up to 20 files per priority' },
-  { value: 'thorough', title: 'Thorough', description: 'Up to 40 files per priority' },
+  { value: 'quick', title: 'Quick', description: 'Fastest scope' },
+  { value: 'standard', title: 'Standard', description: 'Balanced scope' },
+  { value: 'thorough', title: 'Thorough', description: 'Largest scope' },
 ];
 
 interface EffortSelectorProps {
   value: EffortLevel;
   onChange: (value: EffortLevel) => void;
+  maxFilesPerPriority: number | null;
   disabled?: boolean;
 }
 
-export function EffortSelector({ value, onChange, disabled = false }: EffortSelectorProps) {
+export function EffortSelector({ value, onChange, maxFilesPerPriority, disabled = false }: EffortSelectorProps) {
   return (
     <fieldset className="space-y-2" disabled={disabled}>
       <legend className="text-sm text-muted-foreground">Review effort</legend>
@@ -34,6 +35,11 @@ export function EffortSelector({ value, onChange, disabled = false }: EffortSele
           </button>
         ))}
       </div>
+      {maxFilesPerPriority !== null && (
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          Current scope: up to {maxFilesPerPriority} files per priority.
+        </p>
+      )}
     </fieldset>
   );
 }

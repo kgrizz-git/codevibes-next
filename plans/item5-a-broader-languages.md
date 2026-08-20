@@ -1,6 +1,7 @@
 # Plan A (Item 5) — Broader Language and Pattern Coverage
 
-> **Status:** REVIEWED — implementation plan.
+> status: accepted
+> **Review state:** implementation plan.
 > **Primary code:** `codevibes-backend/src/utils/fileFilter.ts` and its tests.
 > **Risk:** Medium, not low: prioritization decides which files consume a fixed per-tier cap.
 
@@ -22,8 +23,9 @@
 1. Keep a single explicit, lowercase source-extension allowlist and test it. Add the following
    initial set after checking the repository corpus: `kt kts cs c h cc cpp cxx hpp m mm swift
    scala sc ex exs dart lua r pl pm sh bash zsh ps1 fs fsx vb groovy clj cljs hs erl hrl zig sol`.
-   Retain all existing extensions. Add `tf` and `tfvars` through the Terraform rule below rather
-   than silently treating them as generic supporting code.
+   Retain all existing extensions. Add Terraform's `.tf`, `.tfvars`, `.tf.json`, and `.tfvars.json`
+   forms through the Terraform rule below rather than silently treating them as generic supporting
+   code.
 2. First-class convention coverage is narrow and language-specific:
    - Go: `cmd/`, `internal/`, `pkg/`, and `handlers/` source files are P2; exact `main.go` is P2.
    - Rust: `crates/*/src/`, `src/main.rs`, `src/lib.rs`, `src/bin/`, and `Cargo.toml` are P2.
@@ -33,8 +35,9 @@
      generic business logic.
 3. Add only reviewed framework patterns: P1 `oauth`, `jwt`, `session`, `iam`, and `vault`; P2
    `graphql`, `resolvers`, `mutations`, `workers`, `jobs`, and `tasks`. `queries` stays P1.
-   `.envrc` is P1. Do not use `.env.*`; it would select examples/templates.
-4. Terraform is P1 (`**/*.tf`, `**/*.tfvars`) and `.terraform/**` is ignored. This recognizes
+   `.envrc` is P1. Dotenv mode files are P1 only when the matcher explicitly excludes every
+   `example`, `template`, and `sample` mode segment.
+4. Terraform is P1 (`**/*.tf`, `**/*.tfvars`, `**/*.tf.json`, `**/*.tfvars.json`) and `.terraform/**` is ignored. This recognizes
    infrastructure policy and potential secret-bearing vars while excluding provider cache data.
 5. Never add broad, unqualified filename signals. If a filename convention is needed, bind it to
    the recognized extension set (or use exact names). Add a regression test showing a non-source
@@ -58,8 +61,11 @@
 
 Extend `fileFilter.test.ts` with table-driven cases and preserve existing contracts:
 
-- Every new extension has one P3 example (`.dart`, `.cs`, `.swift`, C/C++ headers, shell, etc.).
-- `.envrc`, OAuth/JWT paths, Terraform `.tf` and `.tfvars` are P1; `.terraform/...` is `null`.
+- Every new generic source extension has one P3 example (`.dart`, `.cs`, `.swift`, C/C++ headers,
+  shell, etc.); Terraform is excluded because `.tf`, `.tfvars`, `.tf.json`, and `.tfvars.json`
+  are P1 policy inputs.
+- `.envrc`, OAuth/JWT paths, and Terraform `.tf`, `.tfvars`, `.tf.json`, and `.tfvars.json` are P1;
+  `.terraform/...` is `null`.
 - `.env.example`, `.env.template`, and `.env.sample` remain `null`, not P1 or ignored.
 - `graphql/resolvers` and each Go/Rust convention land in the intended P2 tier; `queries` remains
   P1. Include root and nested `main.go`, `src/main.rs`, and `src/lib.rs` cases.

@@ -72,10 +72,16 @@ describe('broader language coverage and conventions', () => {
 
     it('prioritizes supported security, environment, and Terraform inputs', () => {
         expect(getFilePriority('.envrc')).toBe(1);
+        expect(getFilePriority('.env.staging')).toBe(1);
+        expect(getFilePriority('config/.env.production.local')).toBe(1);
+        expect(getFilePriority('.env.qa')).toBe(1);
+        expect(getFilePriority('config/.env.integration.us-east-1')).toBe(1);
         expect(getFilePriority('src/oauth/client.swift')).toBe(1);
         expect(getFilePriority('src/auth/verify-jwt.kt')).toBe(1);
         expect(getFilePriority('infrastructure/main.tf')).toBe(1);
         expect(getFilePriority('infrastructure/secrets.tfvars')).toBe(1);
+        expect(getFilePriority('infrastructure/main.tf.json')).toBe(1);
+        expect(getFilePriority('infrastructure/secrets.tfvars.json')).toBe(1);
     });
 
     it('keeps Terraform caches ignored before Terraform P1 rules', () => {
@@ -84,10 +90,20 @@ describe('broader language coverage and conventions', () => {
         expect(getFilePriority('modules/network/.terraform/modules/cache.tf')).toBeNull();
     });
 
-    it('does not select environment examples or templates', () => {
-        expect(getFilePriority('.env.example')).toBeNull();
-        expect(getFilePriority('.env.template')).toBeNull();
-        expect(getFilePriority('.env.sample')).toBeNull();
+    it.each([
+        '.env.example',
+        '.env.template',
+        '.env.sample',
+        '.env.staging.example',
+        '.env.staging.template',
+        '.env.staging.sample',
+        '.env.production.local.example',
+        '.env.production.local.template',
+        '.env.production.local.sample',
+        '.env.qa.template',
+        '.env.integration.sample.us-east-1',
+    ])('does not select dotenv example/template/sample variant %s', (file) => {
+        expect(getFilePriority(file)).toBeNull();
     });
 
     it('prioritizes reviewed framework, Go, and Rust conventions', () => {

@@ -13,7 +13,8 @@ Where to make common review-pipeline changes.
 ## Add a selection rule
 
 - Add a direct policy-file rule or a source-gated P1/P2 convention in `fileFilter.ts`.
-- For Terraform, source `*.tf`/`*.tfvars` may be P1, but `.terraform/**` remains ignored.
+- For Terraform, `*.tf`, `*.tfvars`, `*.tf.json`, and `*.tfvars.json` may be P1, but
+  `.terraform/**` remains ignored.
 - Avoid broad patterns such as `*main*`, `*test*`, or `*model*`; test false positives as well as
   the intended path.
 

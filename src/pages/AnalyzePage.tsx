@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useAnalysisStore, type AnalysisIssue } from '@/store/analysisStore';
+import { useAnalysisStore, type AnalysisIssue, type RepoInfo } from '@/store/analysisStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
@@ -29,6 +29,31 @@ import { parseGitHubRepositoryUrl } from '@/lib/githubUrl';
 import { isEffortSelectorLocked, applyEffortChange } from '@/lib/effortSelection';
 import { useEffortEstimate } from '@/hooks/useEffortEstimate';
 import { useAuth } from '@/contexts/AuthContext';
+
+async function validateAndEstimateRepo(
+  owner: string,
+  name: string,
+  effort: api.EffortLevel,
+  setStatusMessage: (message: string) => void,
+  setRepoInfo: (info: RepoInfo) => void,
+  loadEstimate: (repoUrl: string, selectedEffort: api.EffortLevel) => Promise<api.AnalysisEstimate | null>,
+): Promise<boolean> {
+  try {
+    setStatusMessage('Validating repository...');
+    const result = await api.validateRepo(`https://github.com/${owner}/${name}`);
+    if (!result.valid) {
+      toast.error(result.error || 'Repository not found');
+      return false;
+    }
+
+    setRepoInfo({ owner, name, fullName: result.fullName, stars: result.stars, lastUpdate: result.lastUpdate, defaultBranch: result.defaultBranch });
+    setStatusMessage('Estimating analysis...');
+    return (await loadEstimate(`https://github.com/${owner}/${name}`, effort)) !== null;
+  } catch (error: unknown) {
+    toast.error(error instanceof Error ? error.message : 'Failed to fetch repository info');
+    return false;
+  }
+}
 
 export default function AnalyzePage() {
   const navigate = useNavigate();
@@ -58,11 +83,12 @@ export default function AnalyzePage() {
   const [showLoginDialog, setShowLoginDialog] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const elapsedTimeRef = useRef(0);
   const analysisRef = useRef<{ abort: () => void } | null>(null);
   const sessionEffortRef = useRef<api.EffortLevel>('standard');
   const sessionTotalsRef = useRef({ tokensUsed: 0, cost: 0, filesScanned: 0 });
   const sessionIssuesRef = useRef<Record<1 | 2 | 3, AnalysisIssue[]>>({ 1: [], 2: [], 3: [] });
-  const { invalidate: invalidateEstimate, load: loadEstimate } = useEffortEstimate(updatePriority);
+  const { invalidate: invalidateEstimate, load: loadEstimate, maxFilesPerPriority } = useEffortEstimate(updatePriority);
 
   useEffect(() => {
     const stored = localStorage.getItem('theme');
@@ -88,33 +114,6 @@ export default function AnalyzePage() {
     document.documentElement.classList.toggle('dark', newIsDark);
   };
 
-  const fetchRepoInfo = async (owner: string, name: string, selectedEffort: api.EffortLevel) => {
-    try {
-      setStatusMessage('Validating repository...');
-      const result = await api.validateRepo(`https://github.com/${owner}/${name}`);
-
-      if (!result.valid) {
-        toast.error(result.error || 'Repository not found');
-        return false;
-      }
-
-      setRepoInfo({
-        owner,
-        name,
-        fullName: result.fullName,
-        stars: result.stars,
-        lastUpdate: result.lastUpdate,
-        defaultBranch: result.defaultBranch,
-      });
-
-      setStatusMessage('Estimating analysis...');
-      return (await loadEstimate(`https://github.com/${owner}/${name}`, selectedEffort)) !== null;
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to fetch repository info');
-      return false;
-    }
-  };
-
   const handleStartAnalysis = async () => {
     if (!inputUrl.trim()) {
       toast.error('Please enter a repository URL');
@@ -137,21 +136,29 @@ export default function AnalyzePage() {
       return;
     }
 
+    const selectedEffort = effort;
     setRepoUrl(inputUrl);
     resetAnalysis();
-    sessionEffortRef.current = effort;
+    setIsAnalyzing(true);
+    sessionEffortRef.current = selectedEffort;
     sessionTotalsRef.current = { tokensUsed: 0, cost: 0, filesScanned: 0 };
     sessionIssuesRef.current = { 1: [], 2: [], 3: [] };
     setTotalCost(0);
+    elapsedTimeRef.current = 0;
+    invalidateEstimate();
 
-    const success = await fetchRepoInfo(parsed.owner, parsed.name, sessionEffortRef.current);
-    if (!success) return;
+    const success = await validateAndEstimateRepo(parsed.owner, parsed.name, sessionEffortRef.current, setStatusMessage, setRepoInfo, loadEstimate);
+    if (!success) { setIsAnalyzing(false); setStatusMessage(''); return; }
 
-    timerRef.current = setInterval(() => incrementElapsedTime(), 1000);
+    timerRef.current = setInterval(() => {
+      elapsedTimeRef.current += 1;
+      incrementElapsedTime();
+    }, 1000);
     startPriorityScan(1);
   };
 
   const handleEffortChange = (nextEffort: api.EffortLevel) => {
+    invalidateEstimate();
     applyEffortChange(nextEffort, inputUrl, setEffort, loadEstimate);
   };
 
@@ -164,7 +171,6 @@ export default function AnalyzePage() {
     setIsAnalyzing(true);
     setCurrentPriority(level);
     updatePriority(level, { status: 'scanning', issues: [] });
-    setFilesScanned(0);
     setStatusMessage(`Analyzing Priority ${level} files...`);
 
     const priorityIssues: AnalysisIssue[] = [];
@@ -179,7 +185,7 @@ export default function AnalyzePage() {
         onStatus: (data) => {
           setStatusMessage(data.message);
           if (data.filesScanned > 0) {
-            setFilesScanned(data.filesScanned);
+            setFilesScanned(sessionTotalsRef.current.filesScanned + data.filesScanned);
           }
           if (data.currentFile && !fetchedPaths.includes(data.currentFile)) {
             fetchedPaths.push(data.currentFile);
@@ -196,6 +202,7 @@ export default function AnalyzePage() {
           sessionTotalsRef.current.tokensUsed += data.tokensUsed;
           sessionTotalsRef.current.cost += data.cost;
           sessionTotalsRef.current.filesScanned += data.filesScanned;
+          setFilesScanned(sessionTotalsRef.current.filesScanned);
           sessionIssuesRef.current[level] = priorityIssues;
           setTotalTokensUsed(sessionTotalsRef.current.tokensUsed);
           setTotalCost(sessionTotalsRef.current.cost);
@@ -248,7 +255,10 @@ export default function AnalyzePage() {
     if (approved && awaitingApproval) {
       setAwaitingApproval(null);
       if (!timerRef.current) {
-        timerRef.current = setInterval(() => incrementElapsedTime(), 1000);
+        timerRef.current = setInterval(() => {
+          elapsedTimeRef.current += 1;
+          incrementElapsedTime();
+        }, 1000);
       }
       startPriorityScan((awaitingApproval + 1) as 2 | 3);
     } else {
@@ -288,6 +298,7 @@ export default function AnalyzePage() {
     const filesInIssues = new Set(entry.issues.map(i => i.file).filter(f => f && f !== 'unknown')).size;
     setFilesScanned(entry.files_scanned || filesInIssues || 0);
     setElapsedTime(entry.duration_ms ? Math.floor(entry.duration_ms / 1000) : 0);
+    elapsedTimeRef.current = entry.duration_ms ? Math.floor(entry.duration_ms / 1000) : 0;
 
     const backendIssues = entry.issues || [];
 
@@ -338,7 +349,7 @@ export default function AnalyzePage() {
           tokensUsed: sessionTotalsRef.current.tokensUsed,
           cost: sessionTotalsRef.current.cost,
           filesScanned: sessionTotalsRef.current.filesScanned,
-          durationMs: elapsedTime * 1000,
+          durationMs: elapsedTimeRef.current * 1000,
           effort: sessionEffortRef.current,
           issues: allIssues.map(issue => ({
             id: issue.id,
@@ -501,6 +512,7 @@ export default function AnalyzePage() {
             <EffortSelector
               value={effort}
               onChange={handleEffortChange}
+              maxFilesPerPriority={maxFilesPerPriority}
               disabled={isEffortSelectorLocked(isAnalyzing, awaitingApproval)}
             />
 

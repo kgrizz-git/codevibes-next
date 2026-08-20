@@ -37,6 +37,19 @@ const sourceExtensions = requireMatch(
   "recognized source extensions",
 );
 const extensions = [...sourceExtensions.matchAll(/'([a-z0-9]+)'/gi)].map((match) => match[1]);
+const ignoredPatterns = [...requireMatch(
+  fileFilter,
+  /const IGNORE_PATTERNS = \[([\s\S]*?)\n\];/,
+  "ignore patterns",
+).matchAll(/'([^']+)'/g)].map((match) => match[1]);
+const priority1DirectPatterns = [...requireMatch(
+  fileFilter,
+  /const PRIORITY_1_DIRECT_PATTERNS = \[([\s\S]*?)\n\];/,
+  "priority 1 direct patterns",
+).matchAll(/'([^']+)'/g)].map((match) => match[1]);
+const dotenvPatterns = priority1DirectPatterns.filter((pattern) => pattern.startsWith(".env"));
+const terraformPatterns = priority1DirectPatterns.filter((pattern) => pattern.includes("*.tf"));
+const terraformIgnorePatterns = ignoredPatterns.filter((pattern) => pattern.includes(".terraform"));
 const events = [...analysis.matchAll(/type:\s*'([a-z]+)'/g)].map((match) => match[1]);
 
 const maxFiles = requireMatch(
@@ -71,14 +84,16 @@ const content = `# Generated Review-Pipeline Contract
 | Fact | Source value |
 |---|---|
 | Recognized source extensions | \`${extensions.join(" ")}\` |
+| P1 dotenv policy | \`${dotenvPatterns.join(" ")}\`, plus \`.env.<mode>[.<mode>...]\`; modes containing \`example\`, \`template\`, or \`sample\` are not selected |
+| Terraform policy | P1: \`${terraformPatterns.join(" ")}\`; ignored: \`${terraformIgnorePatterns.join(" ")}\` |
 | Priority order | ignore → P1 → P2 → P3 (first match wins) |
 
 ## Discovery and analysis
 
 | Fact | Source value |
 |---|---|
-| Global files-per-priority safety cap | \`${maxFiles}\` (\`MAX_FILES_PER_PRIORITY\`) |
-| Effort-layer file caps | \`${effortCaps.join(", ")}\` (each is constrained by the global cap) |
+| Global files-per-priority safety cap | \`${maxFiles}\` default; overridden by \`MAX_FILES_PER_PRIORITY\` |
+| Effort-layer file caps | \`${effortCaps.join(", ")}\` defaults; overridden by each corresponding \`EFFORT_*_MAX_FILES\` setting (each is constrained by the global cap) |
 | Tree-cache TTL | \`${cacheTtlMinutes}\` minutes |
 | Content-fetch batch size | \`${batchSize}\` |
 | Gap between batches | \`${batchDelay}\` ms |

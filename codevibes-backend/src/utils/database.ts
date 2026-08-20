@@ -62,20 +62,27 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC);
 `);
 
-// Migration: Add new columns if they don't exist
-try {
-    db.exec('ALTER TABLE analyses ADD COLUMN files_scanned INTEGER DEFAULT 0');
-} catch { /* Column likely exists */ }
+// Migration: Add new columns if they don't exist. Inspecting the schema first
+// avoids hiding unrelated migration failures behind a duplicate-column catch.
+export function migrateAnalysisColumns(database: import('better-sqlite3').Database = db): void {
+    const columns = database.pragma('table_info(analyses)') as Array<{ name: string }>;
+    const existingColumns = new Set(columns.map(column => column.name));
+    const migrations = [
+        ['files_scanned', 'ALTER TABLE analyses ADD COLUMN files_scanned INTEGER DEFAULT 0'],
+        ['duration_ms', 'ALTER TABLE analyses ADD COLUMN duration_ms INTEGER DEFAULT 0'],
+        // Nullable intentionally distinguishes existing, pre-effort rows from
+        // analyses saved after effort became part of the public contract.
+        ['effort', 'ALTER TABLE analyses ADD COLUMN effort TEXT'],
+    ] as const;
 
-try {
-    db.exec('ALTER TABLE analyses ADD COLUMN duration_ms INTEGER DEFAULT 0');
-} catch { /* Column likely exists */ }
+    for (const [column, statement] of migrations) {
+        if (!existingColumns.has(column)) {
+            database.exec(statement);
+        }
+    }
+}
 
-// Nullable intentionally distinguishes existing, pre-effort rows from analyses
-// saved after effort became part of the public contract.
-try {
-    db.exec('ALTER TABLE analyses ADD COLUMN effort TEXT');
-} catch { /* Column likely exists */ }
+migrateAnalysisColumns();
 
 
 logger.info('Database initialized', { path: DB_PATH });

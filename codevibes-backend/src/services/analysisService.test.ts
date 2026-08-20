@@ -95,7 +95,16 @@ describe('analyzeRepository', () => {
             'owner', 'repo', 2, 5, undefined, undefined,
         );
         expect(completeEvents(res)).toEqual([
-            expect.objectContaining({ priority: 1, effort: 'quick', filesScanned: 1 }),
+            expect.objectContaining({
+                priority: 1,
+                effort: 'quick',
+                filesScanned: 1,
+                nextPriorityEstimate: {
+                    files: 1,
+                    estimatedTokens: 10,
+                    estimatedCost: 12,
+                },
+            }),
         ]);
     });
 

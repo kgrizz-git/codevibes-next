@@ -13,7 +13,8 @@ How one priority analysis is streamed to the frontend.
 4. Fetches are sent to the frozen legacy `deepseekService.streamAnalysis` path. `chunk` events
    are currently discarded; each completed issue is relayed as an `issue` event.
 5. The service calculates server-side token usage and cost. For P1/P2 it fetches the next bucket
-   with the same effective cap for `nextPriorityEstimate`.
+   with the same effective cap for `nextPriorityEstimate`; its `files` count is the number of
+   files included after that cap, not the uncapped number of matching files.
 6. It emits a `complete` event and always closes the response.
 
 ## Effort and file caps

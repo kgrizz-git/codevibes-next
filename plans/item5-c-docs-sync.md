@@ -1,6 +1,7 @@
 # Plan C (Item 5) — Documentation and Contract Maintenance
 
-> **Status:** REVIEWED — mandatory completion work for every Plan A/B pull request.
+> status: accepted
+> **Review state:** mandatory completion work for every Plan A/B pull request.
 
 ## Rule
 

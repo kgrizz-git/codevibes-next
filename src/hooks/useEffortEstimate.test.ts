@@ -25,7 +25,7 @@ function sampleEstimate(effort: api.EffortLevel): api.AnalysisEstimate {
     totalEstimatedTokens: 0,
     totalEstimatedCost: 0,
     effort,
-    maxFilesPerPriority: 0,
+    maxFilesPerPriority: 7,
   };
 }
 
@@ -47,6 +47,7 @@ describe('useEffortEstimate', () => {
     });
 
     expect(getEstimateMock).toHaveBeenCalledWith('https://github.com/owner/repo', 'thorough');
+    expect(result.current.maxFilesPerPriority).toBe(7);
   });
 
   it('updates only the current response priority placeholders', async () => {
@@ -73,15 +74,16 @@ describe('useEffortEstimate', () => {
     const { updatePriority, calls } = makeUpdatePriority();
     const { result } = renderHook(() => useEffortEstimate(updatePriority));
 
-    const loadPromise = act(async () => {
-      void result.current.load('https://github.com/owner/repo', 'quick');
-    });
+    const loadPromise = result.current.load('https://github.com/owner/repo', 'quick');
 
     // Supersede the in-flight request before it resolves.
     act(() => { result.current.invalidate(); });
+    expect(result.current.maxFilesPerPriority).toBeNull();
 
-    await act(async () => { resolveEstimate(sampleEstimate('quick')); });
-    await loadPromise;
+    await act(async () => {
+      resolveEstimate(sampleEstimate('quick'));
+      await loadPromise;
+    });
 
     // The stale success must not have written any priority placeholders.
     expect(calls).toHaveLength(0);
@@ -96,16 +98,17 @@ describe('useEffortEstimate', () => {
     const { updatePriority, calls } = makeUpdatePriority();
     const { result } = renderHook(() => useEffortEstimate(updatePriority));
 
-    const loadPromise = act(async () => {
-      void result.current.load('https://github.com/owner/repo', 'quick');
-    });
+    const loadPromise = result.current.load('https://github.com/owner/repo', 'quick');
 
     act(() => { result.current.invalidate(); });
 
-    await act(async () => { rejectEstimate(new Error('stale failure')); });
+    await act(async () => {
+      rejectEstimate(new Error('stale failure'));
+      await loadPromise;
+    });
 
     // The error should be swallowed (returns null) rather than thrown.
-    await expect(loadPromise).resolves.toBeUndefined();
+    await expect(loadPromise).resolves.toBeNull();
     expect(calls).toHaveLength(0);
 
     // A subsequent non-stale request still surfaces errors.

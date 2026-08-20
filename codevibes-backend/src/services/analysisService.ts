@@ -94,7 +94,7 @@ async function buildNextPriorityEstimate(
     const estimatedTokens = Math.ceil(nextFiles.files.length * avgTokensPerFile);
 
     return {
-        files: nextFiles.totalMatching,
+        files: nextFiles.files.length,
         estimatedTokens,
         estimatedCost: calculateCost(estimatedTokens, estimatedTokens * 0.2),
     };

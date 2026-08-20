@@ -10,14 +10,16 @@
 | Fact | Source value |
 |---|---|
 | Recognized source extensions | `js ts jsx tsx py java go rb php rs kt kts cs c h cc cpp cxx hpp m mm swift scala sc ex exs dart lua r pl pm sh bash zsh ps1 fs fsx vb groovy clj cljs hs erl hrl zig sol` |
+| P1 dotenv policy | `.env .envrc`, plus `.env.<mode>[.<mode>...]`; modes containing `example`, `template`, or `sample` are not selected |
+| Terraform policy | P1: `**/*.tf **/*.tfvars **/*.tf.json **/*.tfvars.json`; ignored: `.terraform/** **/.terraform/**` |
 | Priority order | ignore → P1 → P2 → P3 (first match wins) |
 
 ## Discovery and analysis
 
 | Fact | Source value |
 |---|---|
-| Global files-per-priority safety cap | `40` (`MAX_FILES_PER_PRIORITY`) |
-| Effort-layer file caps | `quick=5, standard=20, thorough=40` (each is constrained by the global cap) |
+| Global files-per-priority safety cap | `40` default; overridden by `MAX_FILES_PER_PRIORITY` |
+| Effort-layer file caps | `quick=5, standard=20, thorough=40` defaults; overridden by each corresponding `EFFORT_*_MAX_FILES` setting (each is constrained by the global cap) |
 | Tree-cache TTL | `5` minutes |
 | Content-fetch batch size | `5` |
 | Gap between batches | `200` ms |
