@@ -206,8 +206,10 @@ async function loadRawWrappingKeyInternal(): Promise<Uint8Array> {
     if (legacy) {
         if (idbExisting && !bytesEqual(idbExisting, legacy)) {
             // IndexedDB recovered with a stale key while the active fallback lives in localStorage.
-            await idbWriteRaw(legacy);
-            localStorage.removeItem(LEGACY_DEVICE_KEY_STORAGE);
+            const promoted = await idbWriteRaw(legacy);
+            if (promoted) {
+                localStorage.removeItem(LEGACY_DEVICE_KEY_STORAGE);
+            }
             return legacy;
         }
         if (idbExisting) {

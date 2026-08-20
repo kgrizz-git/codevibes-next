@@ -123,4 +123,18 @@ describe('secretStorage', () => {
     hooks.resetMemoryWrapCacheForTests();
     expect(await readEncryptedSecret(API_KEY_STORAGE_KEY)).toBe('sk-recovery');
   });
+
+  it('retains localStorage fallback when promoting it to IndexedDB fails', async () => {
+    await hooks.replaceWrappingKeyForTests(new Uint8Array(32).fill(0xaa));
+    hooks.blockIdbWritesForTests(true);
+    hooks.resetMemoryWrapCacheForTests();
+
+    await writeEncryptedSecret(API_KEY_STORAGE_KEY, 'sk-repair-fail');
+    const fallbackHex = localStorage.getItem('vibeguard_device_key');
+    expect(fallbackHex).toMatch(/^[0-9a-f]{64}$/i);
+
+    hooks.resetMemoryWrapCacheForTests();
+    expect(await readEncryptedSecret(API_KEY_STORAGE_KEY)).toBe('sk-repair-fail');
+    expect(localStorage.getItem('vibeguard_device_key')).toBe(fallbackHex);
+  });
 });
