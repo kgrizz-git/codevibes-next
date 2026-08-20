@@ -16,20 +16,32 @@
   and ignore logic — extend it for new cases.
 
 ## Goals
-1. **More languages:** add common source extensions to the P3 catch-all so they enter the
-   review funnel (e.g. `kt swift cs c cpp h hpp scala kotlin tsx already present m swift rust
-   already present rb already present`). Propose: `kt, swift, cs, c, cpp, h, hpp, scala, ex, exs,
-   dart, lua, r, pl, sh, bash, zsh, vue, svelte`.
+1. **More languages:** add common source extensions to the P3 catch-all (`PRIORITY_3_PATTERNS`,
+   `:212-221`) so they enter the review funnel. Clean proposed list (note: `tsx`, `swift`,
+   `rust`/`rs`, `rb` are already present; do NOT re-add):
+   `kt, cs, c, cpp, h, hpp, scala, ex, exs, dart, lua, r, pl, sh, bash, zsh, vue, svelte`.
+   - **Terraform:** decide explicitly — either add `*.tf` to the P3 catch-all (or a P1
+     `.tfvars`-adjacent rule) so Terraform is reviewed, OR state it is out of scope. Do not add
+     `.terraform/**` + `*.tfvars` to IGNORE without also funneling `*.tf`, or Terraform code
+     stays entirely unreviewed. Extensionless scripts (e.g. `bin/deploy`) remain dropped — note it.
 2. **Greater pattern variation:** add widely-used framework/language conventions to P1/P2 so
    security/business-logic files are caught beyond the current English-dir-name assumptions:
    - P1: `**/oauth/**`, `**/jwt/**`, `**/session/**`, `**/iam/**`, `**/vault/**`,
-     `*.env.*` (broader env variants), `.envrc`.
-   - P2: `**/graphql/**`, `**/resolvers/**`, `**/mutations/**`, `**/queries/**`
-     (already used for SQL), `**/workers/**`, `**/jobs/**`, `**/tasks/**`.
-   - Ignore: add `.terraform/**`, `*.tfvars`, `dist/`, already present; consider
-     `**/__pycache__/**` glob form, `*.lock` already covered.
+     `.envrc` (single-file, not a glob that hits `.env.example`).
+   - P2: `**/graphql/**`, `**/resolvers/**`, `**/mutations/**`, `**/workers/**`,
+     `**/jobs/**`, `**/tasks/**`.
+   - **Do NOT add `**/queries/**` to P2** — it is already in P1 (`:130`); first-match-wins means
+     P2 additions there are a no-op. Leave it in P1.
+   - **Do NOT use `*.env.*`** — with `minimatch({ dot: true })`, that glob matches
+     `.env.example` / `.env.template` / `.env.sample`, which are *deliberately excluded*
+     (`fileFilter.ts:94-96`, prompt false-positive guard `deepseekService.ts:51`). Use enumerated
+     variants (`.env.staging`, `.env.integration`, …) and, if desired, add
+     `.env.example`/`.env.template`/`.env.sample` to `IGNORE_PATTERNS` to be explicit.
+   - Ignore: add `.terraform/**` only if paired with a `*.tf` funnel decision above.
 3. **Determinism check:** confirm first-match-wins ordering still produces sensible tiers after
-   additions (P1 > P2 > P3). Add tests asserting new patterns land in the intended priority.
+   additions (P1 > P2 > P3). Add tests asserting new patterns land in the intended priority,
+   **including a test that `.env.example` stays unmatched (not pulled into P1) after any env
+   pattern changes**.
 
 ## Proposed changes (`fileFilter.ts`)
 - Extend `PRIORITY_3_PATTERNS` catch-all line to include the new extensions.
@@ -50,14 +62,22 @@
 
 ## Docs sync (Plan C)
 - Update `docs/review-pipeline/02-file-selection.md`:
-  - New extensions in the P3 catch-all list (`:212-222`).
-  - New P1/P2 patterns.
+  - New extensions in the P3 catch-all list (`:212-221`).
+  - New P1/P2 patterns (and note if `**/queries/**` stays in P1).
 - Update `docs/review-pipeline/06-extension-hooks.md` "Add a new language" example list to match.
+- **Regenerate the machine-checked contract:** changing the P3 extension list makes
+  `docs/review-pipeline/generated-contract.md` stale. CI `check:pipeline-contract` will FAIL unless
+  you run `npm run docs:pipeline-contract -- --write` and commit the regenerated file (see Plan C).
+  If a new pipeline source file is introduced, extend `MAPPINGS` in
+  `scripts/check-review-pipeline-docs.mjs` (Plan C).
 
 ## Acceptance
 - `npm run typecheck` + `npm test` (backend) pass.
-- New patterns verified by added tests; no regression in existing priority assignments.
+- New patterns verified by added tests; no regression in existing priority assignments;
+  `.env.example` still excluded by the new env patterns.
 - `docs/review-pipeline/02-file-selection.md` and `06-extension-hooks.md` updated to match.
+- `npm run check:pipeline-contract` and `npm run check:pipeline-docs` pass (contract regenerated
+  and committed if the P3 list changed).
 - `scripts/check-file-size` passes (no oversized file introduced).
 
 ## Out of scope

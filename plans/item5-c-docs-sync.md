@@ -26,6 +26,20 @@ logic, or the `MAX_FILES_PER_PRIORITY` knob.
 | Cost/pricing logic (`tokenCounter.ts`) | `05-cost-model.md`; `docs/review-pipeline.md` table |
 | SSE flow / error codes (`analysisService.ts`, `analysisController.ts`) | `03-orchestration-sse.md` (event ordering, error-code table) |
 | New extension hook or changed "where to change X" | `06-extension-hooks.md` |
+| Effort layer added to the **new** provider path (`aiProvider.ts` or `effortConfig.ts` — NOT `deepseekService.ts`) | `04-reviewing-agent.md` (param + behavior); `docs/review-pipeline.md` quick-reference table; repoint `06-extension-hooks.md` "Add selectable effort" from `deepseekService.ts` to the new path |
+| `EFFORT_MAX_TOKENS` / `EFFORT_FILE_CAP` env knobs | `03-orchestration-sse.md` (env knobs); `.env.example` |
+
+## Machine-checked contract (CI-blocking — must not be skipped)
+`scripts/review-pipeline-contract.mjs` extracts P3 extensions, SSE events, `MAX_FILES_PER_PRIORITY`,
+`AVG_TOKENS_PER_FILE`, `OUTPUT_RATIO`, `temperature`, and `max_tokens` from source and (re)generates
+`docs/review-pipeline/generated-contract.md`. CI runs `check:pipeline-contract`, which **fails if
+that file is stale**. Therefore, whenever Plans A/B change the P3 extension list, the cap/estimate
+math, or `max_tokens`, the PR must run `npm run docs:pipeline-contract -- --write` and commit the
+regenerated `generated-contract.md`.
+
+Separately, `scripts/check-review-pipeline-docs.mjs` has a `MAPPINGS` object (source file → doc
+page). If a new pipeline source file is introduced (e.g. `aiProvider.ts`, `effortConfig.ts`), the
+`MAPPINGS` list must be extended so the check flags missing docs for it.
 
 ## Process
 1. Author makes the code change on a branch (e.g. from Plan A or B).

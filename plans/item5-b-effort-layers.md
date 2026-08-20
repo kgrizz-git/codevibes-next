@@ -2,7 +2,7 @@
 
 > **Status:** NEEDS REVIEW
 > **Workstream:** let users choose review **effort/detail** (e.g. `quick` vs `standard` vs
-> `thorough`), scaling agent prompt depth, file cap, parallelism, and token budget; surface it
+> `thorough`), scaling agent prompt depth, file cap, and token budget; surface it
 > in the UI, persist per-analysis, and report it in the `complete`/estimate payloads.
 > **Part of:** `plans/item5-overview.md`. **Prereq:** item 1 docs
 > (`docs/review-pipeline/03-orchestration-sse.md`, `04-reviewing-agent.md`).
@@ -22,86 +22,130 @@
 - **Agent** (`deepseekService.ts`): `getPromptForPriority(priority)` (`:633`) → 3 prompts;
   `temperature: 0.3`, `max_tokens: 8000` (`:728,729,804,805`); enforced JSON schema; P1=CRITICAL/HIGH/MEDIUM/LOW,
   P2=HIGH/MEDIUM/LOW, P3=MEDIUM/LOW.
-- **Frontend**: `useAnalysis.ts` (code-snippet path, priority 1 only) and `AnalyzePage.tsx` consume
-  SSE. `analysisStore` holds `apiKey`. No effort concept exists today.
+- **Frontend**: `AnalyzePage.tsx` consumes SSE for repo analysis. NOTE: `useAnalysis.ts` is the
+  **code-snippet** path (priority 1 only) — the provider plan Step 3 **deletes** this path and the
+  hook entirely, so effort support must NOT be added there. `analysisStore` holds `apiKey`
+  (priority is NOT persisted today — see persistence note). No effort concept exists today.
 
 ## Proposed design
 Introduce an `effort` dimension orthogonal to `priority`. Three layers:
 
-| Layer | `max_tokens` | `MAX_FILES_PER_PRIORITY` (effective) | Prompt depth | Target use |
+| Layer | `max_tokens` | Effective file cap | Prompt depth | Target use |
 |---|---|---|---|---|
 | `quick` | 2000 | 5 | terse; "report only CRITICAL/HIGH, be concise" | fast pre-PR sanity |
 | `standard` | 8000 | 20 (today's default) | current prompts unchanged | default |
-| `thorough` | 16000 | 40 | deeper instructions; "report LOW too, include rationale" | pre-release audit |
+| `thorough` | 8192 (cap) | 40 | deeper instructions; "report LOW too, include rationale" | pre-release audit |
 
 Notes:
 - `standard` MUST preserve today's behavior exactly (no behavior change for existing users).
-- `max_tokens` and file cap scale; `temperature` stays 0.3.
-- Effort is **per-analysis**, applied to whichever priority(ies) the analysis runs.
+- **`max_tokens` ceiling is model-dependent.** The current default model `deepseek-chat`
+  enforces `max_tokens ∈ [1, 8192]`; passing `16000` returns HTTP 400. So `thorough` caps at
+  **8192**. "Thoroughness" comes from the larger file cap (40) + deeper prompt text, NOT from a
+  higher `max_tokens`. Once the provider plan's registry lands, per-model `max_tokens` ceilings
+  should move there (see Coordination).
+- **No input-context overflow guard today.** `BATCH_SIZE = 5` is hardcoded (`githubService.ts:208`)
+  and this plan does NOT change parallelism. The 40-file `thorough` cap risks exceeding the model
+  context window on large repos; mitigate with a total-content/token budget in the prompt builder
+  (or accept the truncation risk) — call this out in implementation.
+- `temperature` stays 0.3. Effort is **per-analysis**, applied to whichever priority(ies) the
+  analysis runs.
 
-## Phases
+## Phases — split by the `deepseekService.ts` freeze
 
-### Phase B0 — Schema & config (no behavior change for `standard`)
-- Add `EffortLevel = 'quick' | 'standard' | 'thorough'` type (`types/index.ts`).
-- Add `EFFORT_MAX_TOKENS` and `EFFORT_FILE_CAP` lookup maps (env-overridable, e.g.
-  `MAX_FILES_PER_PRIORITY` becomes per-effort or a multiplier). Keep `standard` = today's values.
-- `getPromptForPriority(priority, effort?)` gains optional `effort`; `standard` returns current
-  prompts verbatim.
-- Docs: update `04-reviewing-agent.md` (param added) + `03-orchestration-sse.md` (env knobs).
+> **Critical dependency (validated):** `USE_LEGACY_PROVIDER` does **not** exist in code today —
+> there is no `aiProvider.ts`/new provider path yet (only plans + docs reference it). And
+> `deepseekService.ts` must stay **byte-for-byte intact** until the provider plan Step 1 retires
+> the legacy path. Therefore any change to `getPromptForPriority` or `max_tokens` **inside
+> `deepseekService.ts` cannot ship now**. Split execution accordingly:
 
-### Phase B1 — API & orchestration
-- `POST /api/analyze` accepts optional `effort` (default `standard`); validate ∈ enum, else 400
-  (`analysisController.ts:20` area). Pass through to `analyzeRepository`.
-- `analyzeRepository` uses effort-derived `maxFiles` (instead of bare `MAX_FILES_PER_PRIORITY`)
-  and passes `effort` to `streamAnalysis` → `getPromptForPriority`.
-- `complete` payload gains `effort` field; `nextPriorityEstimate` computed with effort-aware
-  file cap.
-- `GET /api/estimate` accepts optional `effort`; `getEstimate` projects per-effort file caps
-  and `max_tokens` into cost (keep `AVG_TOKENS_PER_FILE=500`, `OUTPUT_RATIO=0.2` but multiply by
-  effort file cap). Return `effort` in estimate.
-- Docs: update `03-orchestration-sse.md` (event payload, estimate) + `docs/review-pipeline.md`
-  quick-reference table.
+### B-now (ships without touching `deepseekService.ts`)
+All changes live in `analysisService.ts`, `analysisController.ts`, `types/index.ts`, and the
+frontend — none in the frozen file.
 
-### Phase B2 — Frontend surface & persistence
-- `AnalyzePage.tsx`: add an effort selector (segmented control / select) next to priority.
-- `useAnalysis.ts` / API client (`lib/api.ts`): send `effort` in `/api/analyze` and `/api/estimate`.
-- `analysisStore`: persist last-selected `effort` (mirror how `apiKey`/priority are persisted).
-- Results view: show the effort badge alongside cost/severity (reuse existing cost/severity UI).
-- Docs: update `06-extension-hooks.md` "Add selectable effort / detail layers" section to reflect
-  the implemented shape.
+- **Schema & config:** add `EffortLevel = 'quick' | 'standard' | 'thorough'` (`types/index.ts`).
+  Add `EFFORT_MAX_TOKENS` and `EFFORT_FILE_CAP` lookup maps (env-overridable; `standard` keeps
+  today's values: 8000 / 20). Document in `.env.example` (already lists `MAX_FILES_PER_PRIORITY`)
+  and `03-orchestration-sse.md`.
+- **API & orchestration:** `POST /api/analyze` accepts optional `effort` (default `standard`),
+  validate ∈ enum → 400 before SSE headers (`analysisController.ts:20` area). `analyzeRepository`
+  derives `maxFiles` from effort (replacing bare `MAX_FILES_PER_PRIORITY`) and passes `effort`
+  through — but when routing to the **legacy** `deepseekService.streamAnalysis`, the effort param
+  is **not** plumbed into prompt building (legacy path treats everything as `standard`). `complete`
+  payload gains `effort` (add it to BOTH the main site `:198-205` and the zero-files early-return
+  `:137-143`); `nextPriorityEstimate` uses the effort-aware file cap. `GET /api/estimate` accepts
+  `effort`; `getEstimate` projects per-effort file caps into cost (keep `AVG_TOKENS_PER_FILE=500`,
+  `OUTPUT_RATIO=0.2` × effort cap); return `effort`. Cover all cap sites: `analyzeRepository`,
+  `getEstimate`, and the estimate endpoint.
+- **Frontend surface & persistence (client-store only for MVP):**
+  - **Extract `EffortSelector.tsx`** as a separate component — mandatory, not optional, because
+    `AnalyzePage.tsx` is **1153 lines** (already over the 500-line cap; ceiling-capped in
+    `structural-exceptions.json`). Do not grow it inline.
+  - API client (`lib/api.ts`): send `effort` on `/api/analyze` and `/api/estimate`.
+  - `analysisStore`: persist **last-selected effort** (follow the existing `theme`/localStorage
+    pattern), NOT a DB column. **Do not claim `priority` is persisted** — it is not.
+  - **Refetch the estimate when effort changes** (`AnalyzePage` fetches `getEstimate` on repo
+    validation) so the cost projection tracks the selected layer.
+  - Results view: show the server-computed `cost` (not the hardcoded `0.14` sites in
+    `AnalyzePage.tsx:391,1042`), plus an effort badge. Coordinate with provider plan Step 2
+    ("frontend must stop computing cost").
+  - **Do NOT add effort to `useAnalysis.ts`** — that code-snippet path is deleted by provider plan
+    Step 3.
+- **Tests:** effort on both `complete` sites; `standard` payload shape identical to today (minus
+  the added field); effort validation 400 before SSE; effort-aware caps in `analyzeRepository` and
+  `getEstimate`; estimate math. Borrow the provider plan's test list.
 
-### Phase B3 — Tests & quality gates
-- Backend: unit tests for `getPromptForPriority(priority, effort)` (standard === current), effort
-  validation 400, effort-aware file cap in `analyzeRepository` (mock `deepseekService`), estimate
-  math.
-- Frontend: update `lib/api.test.ts` for the new field; a smoke test for the selector.
-- Ensure no file exceeds the 500-line quality-gate cap (Plan A/C note: `AnalyzePage.tsx` is
-  already over the cap per TO_DO item 6 — coordinate the effort selector with that refactor, or
-  extract an `EffortSelector` component to avoid growing it).
+### B-after-provider-Step-1 (once `aiProvider.ts`/new path exists)
+- Move prompt-depth variants into the new provider service: `getPromptForPriority(priority, effort?)`
+  returns `standard` verbatim for `standard`, deeper/terser text for `thorough`/`quick`, preserving
+  the enforced JSON schema (add a schema-preservation contract test).
+- Make `max_tokens` per-model via the provider registry (so `thorough`'s ceiling is the model's,
+  not a hardcoded 8192). Keep `deepseekService.ts` untouched.
+- Update `04-reviewing-agent.md` and `06-extension-hooks.md` (the latter currently tells people to
+  edit `getPromptForPriority` in `deepseekService.ts` — wrong once B lands; repoint to the new
+  path).
+- **DB persistence (optional, defer):** if per-analysis history persistence is wanted, add an
+  `effort` column to `analyses` (`database.ts`) + `historyController.saveAnalysis` + `api.ts`, and
+  fold the migration into the provider plan Step 6 round (avoid two `ALTER TABLE`s). Existing rows
+  get `NULL` (mirror provider plan backfill). MVP ships client-store only.
 
 ## Coordination / risks
-- **Provider plan:** pricing is being made provider-aware there. Effort layer math must read from
-  the same cost source (`calculateCost`) and not bake in DeepSeek-only assumptions. Defer
-  provider-specific effort pricing to that plan.
-- **deepseekService.ts legacy constraint:** do NOT edit `deepseekService.ts` logic until
-  `USE_LEGACY_PROVIDER` is retired (TO_DO item 6 / provider plan Step 1). If the legacy flag
-  still gates that file, implement B0/B1 prompt+effort changes **behind the new path only** and
-  document in `04-reviewing-agent.md` rather than mutating legacy code. Verify the flag state
-  before editing.
-- **UX scope creep:** keep the selector minimal; avoid per-priority effort (per-analysis only).
+- **Provider plan:** pricing is being made provider-aware there; `max_tokens` ceilings belong in
+  the registry. Effort layer math must read from the same cost source (`calculateCost`) and not
+  bake in DeepSeek-only assumptions. Defer provider-specific effort pricing to that plan.
+- **deepseekService.ts legacy constraint (validated):** `USE_LEGACY_PROVIDER` is not in code yet,
+  and the file is frozen. B-now must NOT edit it; the legacy path simply ignores `effort` (treats
+  it as `standard`). Prompt/`max_tokens` variants wait for B-after-provider-Step-1.
+- **Machine-checked contract:** B-now changes to `MAX_FILES_PER_PRIORITY`/cap math or `max_tokens`
+  make `generated-contract.md` stale → `check:pipeline-contract` fails. Run
+  `npm run docs:pipeline-contract -- --write` and commit. Extend `MAPPINGS` in
+  `scripts/check-review-pipeline-docs.mjs` if a new pipeline source file is added (Plan C).
+- **UX scope creep:** keep the selector minimal; effort is per-analysis only (not per-priority).
 
 ## Acceptance
-- `standard` is behavior-identical to today (tests prove prompt equality + identical payload shape
-  minus the added `effort` field).
-- `quick`/`thorough` measurably change file cap + `max_tokens` + prompt text; cost estimate
-  reflects the layer.
-- API rejects invalid `effort` with 400; missing `effort` defaults to `standard`.
-- UI selector persists and is sent on analyze + estimate; results show the effort badge.
-- `npm run typecheck`, `npm test`, `npm run lint`, `scripts/check-file-size --strict` all pass.
-- `docs/review-pipeline/` pages updated (Plan C).
+- **B-now ships independently** of the `deepseekService.ts` freeze: no edit to the frozen file;
+  legacy path ignores `effort` (acts as `standard`).
+- `standard` is behavior-identical to today for the legacy path (payload shape identical minus the
+  added `effort` field on both `complete` sites).
+- `quick`/`thorough` measurably change file cap (+ prompt depth once B-after-provider-Step-1
+  lands); cost estimate reflects the layer. `thorough` `max_tokens` ≤ 8192 (model ceiling).
+- API rejects invalid `effort` with 400 (before SSE headers); missing `effort` defaults to
+  `standard`.
+- UI: `EffortSelector.tsx` extracted (does NOT grow `AnalyzePage.tsx`); persists last-selected
+  effort to client store; sent on analyze + estimate; estimate refetched on effort change;
+  results show server `cost` + effort badge.
+- `npm run typecheck`, `npm test`, `npm run lint`, `scripts/check-file-size --strict`,
+  `npm run check:pipeline-contract`, `npm run check:pipeline-docs` all pass.
+- `docs/review-pipeline/` pages updated (Plan C), including regenerated `generated-contract.md`.
+
+## Backwards compatibility
+- Adding `effort` to `complete`/estimate is additive (old clients tolerate the new field). Cross-
+  reference the provider plan's deploy-order note ("old tabs must tolerate the old `complete`
+  shape"). Add a test that an old-style consumer still parses the new payload.
 
 ## Open questions (for reviewers)
 - Default layer = `standard` (recommended).
 - Should `quick` cap severity to CRITICAL/HIGH, or just be terser with fewer files? (Recommend
   fewer files + lower `max_tokens`, no severity cap.)
 - Is effort per-analysis or per-priority? (Recommend per-analysis.)
+- DB persistence of effort: MVP client-store only, or fold a column into provider plan Step 6?
+  (Recommend MVP client-store, defer DB.)
