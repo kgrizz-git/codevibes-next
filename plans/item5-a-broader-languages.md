@@ -23,6 +23,12 @@
    - **Author's actual stack (priority):** `.dart` (Flutter app) and `.cs` (C#) are the
      highest-value additions — both are currently absent and would otherwise be dropped. Python
      (`.py`) is already covered. Ensure these land in the extension list.
+   - **First-class languages (must be well-supported):** TypeScript, Rust, and Go are
+     explicitly required to be first-class. Note `.ts`/`.tsx`/`.go`/`.rs` are ALREADY in the P3
+     catch-all (`:212-221`), so they are never dropped — the work is to give their
+     *language-specific structural conventions* proper P1/P2 prioritization (see below), not just
+     funnel them. TS/Go/Rust should be the priority languages for pattern variation, ahead of the
+     broader extension list.
    - **Terraform:** decide explicitly — either add `*.tf` to the P3 catch-all (or a P1
      `.tfvars`-adjacent rule) so Terraform is reviewed, OR state it is out of scope. Do not add
      `.terraform/**` + `*.tfvars` to IGNORE without also funneling `*.tf`, or Terraform code
@@ -33,6 +39,15 @@
      `.envrc` (single-file, not a glob that hits `.env.example`).
    - P2: `**/graphql/**`, `**/resolvers/**`, `**/mutations/**`, `**/workers/**`,
      `**/jobs/**`, `**/tasks/**`.
+   - **Go conventions (real, not noise):** `**/cmd/**` (binaries/entrypoints → P2),
+     `**/internal/**` (private pkg logic → P2), `**/pkg/**` (public libs → P2),
+     `**/handlers/**` (HTTP handlers → P1/P2). `main.go`/`main.rs`/`lib.rs` entrypoints should
+     surface via `**/*main*`/`**/*lib*` name-signals (see name-signal approach below).
+   - **Rust conventions (real, not noise):** crate `src/` layout, `**/src/**` entrypoints,
+     `Cargo.toml` (config → consider P1 alongside other config), `**/bin/**` (binaries → P2),
+     `**/lib.rs`/`**/main.rs` via name-signals.
+   - These Go/Rust dirs ARE the genuine conventions for those languages (unlike TS monorepos) —
+     include them, but do NOT add them as generic TS expectations.
    - **Do NOT add `**/queries/**` to P2** — it is already in P1 (`:130`); first-match-wins means
      P2 additions there are a no-op. Leave it in P1.
    - **Do NOT use `*.env.*`** — with `minimatch({ dot: true })`, that glob matches
@@ -56,11 +71,14 @@ The current patterns assume **English, convention-over-configuration layouts** (
 - **Languages with no extension or unconventional extensions** (e.g. Go `main`, shell without
   `.sh`, build scripts) — already partially dropped today.
 
-**Reality check — these are NOT common TypeScript layouts.** `packages/`+`apps/` are monorepo
-workspace conventions (only for multi-package repos); `internal/`+`cmd/` are Go; `crates/` is
-Rust. A *standard* TS app is flat (`src/components`, `src/services`, `src/utils`, `src/pages`) —
-which the current patterns already cover. So broad glob additions like `**/packages/**/src` would
-mostly add noise for typical repos and solve a problem most users don't have.
+**Reality check — distinguish "noise for TS" from "correct for that language."** `packages/`+
+`apps/` are monorepo workspace conventions (only multi-package repos) and mostly noise for a
+standard flat TS app (`src/components`, `src/services`, `src/utils`, `src/pages` — already
+covered). BUT `internal/`+`cmd/` (Go) and `crates/` (Rust) are the *genuine* conventions for
+those languages and must be included (see the Go/Rust patterns above). So: skip `packages/`/`apps/`
+as generic additions, but DO add Go/Rust structural dirs because TS/Go/Rust are first-class
+languages. A *standard* TS app is flat — which current patterns already cover — so the TS work is
+mainly name-signals, not folder globs.
 
 **The real generality gap is language + naming, not folder shape.** Representative real-world
 layouts (e.g. this repo's author): TS apps with ad-hoc subfolders under `src/` such as
@@ -86,10 +104,13 @@ Two design directions:
   validation, security — user globs widen attack surface / can break `minimatch`) and overlaps the
   provider plan's eventual config story. **Defer** to a later, separate plan; note as limitation.
 
-**Decision for this plan:** pursue (A). Drop the monorepo/Go/Rust globs. Language coverage is
-about *extensions*; prioritization is about *name signals*, not assumed folder structure.
-Explicitly **defer (B)**. Add tests asserting `src/backend/foo.py` (name signal → P2) and a
-`.dart` file (extension → at least P3) land in sensible tiers.
+**Decision for this plan:** pursue (A). Skip TS-monorepo globs (`packages/`/`apps/`) as noise,
+but DO add **Go/Rust structural dirs** (`cmd/`, `internal/`, `pkg/`, `bin/`, `crates/`, `src/`
+entrypoints) because TS/Go/Rust are first-class. Language coverage is about *extensions*;
+prioritization is about *name signals* + language-specific structural conventions, not assumed
+flat TS structure. Explicitly **defer (B)** (per-project user-editable patterns). Add tests
+asserting `src/backend/foo.py` (name signal → P2), a `.dart` file (extension → ≥ P3), and
+`internal/bar.go` / `src/lib.rs` (Go/Rust convention → sensible tier) land correctly.
 
 ## In-app transparency: show what is (and isn't) being reviewed
 Today the UI lists the matched file paths per priority (`AnalyzePage.tsx:613-624`) but gives
@@ -114,8 +135,10 @@ must add (frontend, likely in Plan B's UI phase or a small standalone UI task):
   `db`/`database`, `model`, `route`/`router`, `security`, `test` (already partly present — fill
   gaps and add `**/*model*`, `**/*route*`, `**/*security*`-style signals). Prefer `**/*signal*`
   minimatch over assuming English structural dirs.
-- Do NOT add monorepo/Go/Rust folder globs (`packages/`, `apps/`, `internal/`, `cmd/`, `crates/`)
-  — they are not common TS layouts and add noise.
+- **Add language-specific structural dirs for first-class languages** (not noise for them):
+  Go `**/cmd/**`, `**/internal/**`, `**/pkg/**`, `**/handlers/**`; Rust `**/bin/**` + `crates/`
+  `src/` entrypoints; these are valid conventions for Go/Rust. Do NOT add `packages/`/`apps/` as
+  generic TS expectations (monorepo-only, mostly noise for flat TS apps).
 - Keep `minimatch` glob style; avoid enumerating every framework (prefer `**/graphql/**` over
   `**/graphql/**` + `**/graphql.ts` redundancy).
 - Update the `getPriorityDescription`/UI labels only if a new *named* tier is introduced
