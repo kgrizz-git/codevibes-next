@@ -445,6 +445,34 @@ Manual validation: Step 5 release-gate check against one real second provider.
 
 ---
 
+## NEEDS UPDATING — default models, effort layers, and user overrides
+
+This plan currently treats provider/model as the primary user choice and does not account for
+the **effort/detail layers** work from `plans/item5-b-effort-layers.md` (quick | standard |
+thorough). Before implementation, the plan must be extended to cover:
+
+- **Default models per effort (and per review-level setting, if added).** There should be sensible
+  default model+effort combinations — and these defaults may differ based on a review-level /
+  depth setting if that concept is introduced. The provider registry (Step 2) needs a
+  default-model-per-effort (and per-review-level) mapping rather than a single default model.
+- **User override of defaults.** Users must be able to change both the model and the effort away
+  from the defaults (in Settings and/or the Analyze form), with the selection persisted and
+  threaded through `AnalyzeRequest` (`provider`/`model`) and the new `effort` field.
+- **Interaction with effort `max_tokens` / file-cap scaling.** Effort layers define `max_tokens`
+  ceilings and file caps; the per-model `max_tokens` ceiling from this plan's registry must be the
+  upper bound that effort layers respect (effort `thorough` must never exceed the model ceiling,
+  e.g. 8192 for `deepseek-chat`). Reconcile the two so neither plan hardcodes a value the other
+  overrides.
+- **Frontend surface (Step 4/5).** The settings + Analyze UI needs model picker + effort picker
+  (+ review-level if added), with defaults applied and overridable, and the estimate/complete
+  payloads reporting the resolved model + effort.
+
+This is a **note to update the plan**, not the update itself. Coordinated with item 5 (effort
+layers) and the `USE_LEGACY_PROVIDER` retirement (Step 1) — effort/prompt variants cannot ship
+until the new provider path exists.
+
+---
+
 ## Open decisions (all resolved 2026-08-19, Rev 6)
 
 Decision record — decision + one-line rationale. Nothing blocks implementation.
