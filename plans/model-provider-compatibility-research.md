@@ -1,5 +1,7 @@
 # Research: Model / Provider Compatibility (evidence for the plan)
 
+> **Status:** archived
+
 > **Companion to `plans/model-provider-compatibility.md`** (the actionable plan,
 > status NEEDS REVIEW, Rev 8 — **all open decisions resolved**). This doc is the
 > verified research and design evidence the plan stands on: how the AI call works

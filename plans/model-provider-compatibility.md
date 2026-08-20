@@ -1,6 +1,8 @@
 # Plan: Model / Provider Compatibility
 
-> **Status: NEEDS REVIEW** — draft, not yet approved. Written 2026-08-19.
+> **Status:** proposed
+>
+> Draft, not yet approved. Written 2026-08-19.
 > **Revision 8:** five review rounds incorporated; **all open decisions resolved**
 > (§Open decisions). Round 5 (13:41) disambiguated deletion-checklist refs,
 > pinned the `code-snippet` site to `useAnalysis.ts:42`, and added the cheat

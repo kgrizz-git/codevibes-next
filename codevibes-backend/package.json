@@ -10,7 +10,8 @@
         "start": "node dist/server.js",
         "lint": "eslint src",
         "typecheck": "tsc --noEmit",
-        "test": "vitest run"
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
         "@octokit/rest": "^20.0.2",

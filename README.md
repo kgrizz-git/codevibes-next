@@ -209,18 +209,18 @@ A calculated 0-100 score based on:
 ## 🚀 Getting Started
 
 ### Prerequisites
-- **Node.js** v18+
+- **Node.js** v22 (`.nvmrc` pins `22`; CI uses Node 22 LTS). Node 24 is also supported (backend engines `^22.0.0 || >=24.0.0`). Node 18 is **no longer** supported.
 - **DeepSeek API Key** ([Get free key](https://platform.deepseek.com))
 - **GitHub Token** (optional, for private repos)
 
 ### Quick Start
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/danish296/codevibes.git
-cd codevibes
+# 1. Clone YOUR FORK (this repo), not upstream
+git clone https://github.com/kgrizz-git/codevibes-next.git
+cd codevibes-next
 
-# 2. Install all dependencies
+# 2. Install all dependencies (root + backend are independent packages)
 npm install
 cd codevibes-backend && npm install && cd ..
 
@@ -235,6 +235,10 @@ cd codevibes-backend && npm run dev
 # Terminal 2: Frontend
 npm run dev
 ```
+
+> Install from the repo root at least once (the root `prepare` script activates
+> Husky hooks via `core.hooksPath`). Running `npm install` only in
+> `codevibes-backend/` will not activate hooks.
 
 ### Environment Variables
 
@@ -251,6 +255,31 @@ DB_PATH=./data/codevibes.db
 DEEPSEEK_MODEL=deepseek-chat  # or deepseek-reasoner
 ALLOWED_ORIGINS=http://localhost:8080
 ```
+
+---
+
+## 🧰 Developer Commands
+
+The frontend lives at the repo root and the backend in `codevibes-backend/`.
+They are **two independent npm packages** (see `plans/decisions/0002-package-topology.md`),
+so each has its own install and scripts. The authoritative, current command
+vocabulary is in `plans/decisions/0001-verification-command-contract.md`.
+
+| Command (run from repo root unless noted) | What it does |
+|---|---|
+| `npm run dev` | Vite dev server (frontend) |
+| `npm run lint:all`, `test:all`, `build:all` | verify both packages by concern (`test:all` stays fast) |
+| `npm run test:all:coverage` | run both suites with text and JSON-summary coverage; included in `npm run ci` |
+| `npm run typecheck` | typecheck both packages without emitting files |
+| `npm run check:fast` | lint, typecheck, and affected tests (full suites if no comparison base exists) |
+| `npm run ci` | full local gate: checks, tests, builds, and harness validation |
+| `npm run repo:map` | print the concise, generated repository map (`-- --json` for tools) |
+| `npm run check:pipeline-docs` | require matching review-pipeline documentation for source-module changes |
+| `npm run check:structure` | blocking source line-count and absolute-path gate, with four non-increasing legacy ceilings |
+| `npm run check:complexity` | blocking shrink-only budget for complexity, nesting, and line-length diagnostics |
+
+> `prepare` activates Husky hooks on root install. Use `npm run lint:frontend`,
+> `test:backend`, or `build:all` when you need a narrower boundary.
 
 ---
 
@@ -306,22 +335,38 @@ codevibes/
 │   └── store/
 │       └── analysisStore.ts     # Zustand state
 │
-├── codevibes-backend/            # Express Backend
+├── codevibes-backend/            # Express Backend (independent npm package)
 │   ├── src/
 │   │   ├── controllers/
 │   │   │   ├── analysisController.ts
 │   │   │   ├── historyController.ts
-│   │   │   └── githubController.ts
+│   │   │   ├── reposController.ts
+│   │   │   └── authController.ts
 │   │   ├── services/
-│   │   │   ├── deepseekService.ts  # AI prompts & streaming
-│   │   │   └── githubService.ts    # Repo fetching
+│   │   │   ├── deepseekService.ts  # AI prompts & streaming (legacy provider — do not edit)
+│   │   │   ├── githubService.ts    # Repo fetching
+│   │   │   └── analysisService.ts  # Orchestration & SSE
 │   │   ├── utils/
+│   │   │   ├── fileFilter.ts       # File selection / prioritization
+│   │   │   ├── tokenCounter.ts     # Cost model
 │   │   │   ├── database.ts         # SQLite setup
-│   │   │   └── logger.ts           # Winston logging
-│   │   └── server.ts               # Express app
+│   │   │   ├── logger.ts           # Winston logging
+│   │   │   └── auth.ts             # Auth/crypto helpers
+│   │   ├── middleware/
+│   │   │   ├── csrf.ts
+│   │   │   ├── rateLimiter.ts
+│   │   │   └── errorHandler.ts
+│   │   ├── routes/                 # Express routers
+│   │   ├── config/                 # origin config
+│   │   ├── types/                  # shared types
+│   │   ├── server.ts               # Express app
+│   │   └── version.ts
 │   └── data/                       # SQLite database storage
 │
 ├── public/screenshots/             # App screenshots
+├── docs/review-pipeline/           # End-to-end pipeline reference (item 1 of TO_DO)
+├── plans/                         # active plans, decisions/, archive/
+├── scripts/                       # repo scripts (e.g. check-file-size.mjs)
 └── README.md                       # You are here!
 ```
 

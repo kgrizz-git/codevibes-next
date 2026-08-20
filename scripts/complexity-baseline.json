@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "description": "Shrink-only baseline for structural ESLint rules. Do not add diagnostics; remove entries as code is refactored.",
+  "diagnostics": [
+    "codevibes-backend/src/services/analysisService.ts\tcomplexity\tAsync function 'analyzeRepository' has a complexity of 19. Maximum allowed is 15.",
+    "codevibes-backend/src/services/analysisService.ts\tmax-lines-per-function\tAsync function 'analyzeRepository' has too many lines (151). Maximum allowed is 120.",
+    "codevibes-backend/src/services/deepseekService.ts\tcomplexity\tAsync generator function 'streamAnalysis' has a complexity of 21. Maximum allowed is 15.",
+    "codevibes-backend/src/services/deepseekService.ts\tmax-lines\tFile has too many lines (904). Maximum allowed is 500.",
+    "src/components/layout/Header.tsx\tmax-lines-per-function\tFunction 'Header' has too many lines (184). Maximum allowed is 120.",
+    "src/components/ui/ActivityCards.tsx\tmax-lines-per-function\tFunction 'ActivityCards' has too many lines (143). Maximum allowed is 120.",
+    "src/components/ui/chart.tsx\tcomplexity\tArrow function has a complexity of 20. Maximum allowed is 15.",
+    "src/components/ui/chart.tsx\tmax-lines-per-function\tArrow function has too many lines (122). Maximum allowed is 120.",
+    "src/components/ui/sidebar.tsx\tmax-lines\tFile has too many lines (637). Maximum allowed is 500.",
+    "src/hooks/useAnalysis.ts\tcomplexity\tAsync arrow function has a complexity of 25. Maximum allowed is 15.",
+    "src/hooks/useAnalysis.ts\tmax-depth\tBlocks are nested too deeply (6). Maximum allowed is 5.",
+    "src/hooks/useAnalysis.ts\tmax-lines-per-function\tFunction 'useAnalysis' has too many lines (125). Maximum allowed is 120.",
+    "src/lib/api.ts\tcomplexity\tAsync arrow function has a complexity of 27. Maximum allowed is 15.",
+    "src/lib/api.ts\tmax-depth\tBlocks are nested too deeply (6). Maximum allowed is 5.",
+    "src/pages/AnalyzePage.tsx\tcomplexity\tFunction 'AnalyzePage' has a complexity of 71. Maximum allowed is 15.",
+    "src/pages/AnalyzePage.tsx\tmax-lines\tFile has too many lines (1154). Maximum allowed is 500.",
+    "src/pages/AnalyzePage.tsx\tmax-lines-per-function\tFunction 'AnalyzePage' has too many lines (1095). Maximum allowed is 120.",
+    "src/pages/ApiReferencePage.tsx\tmax-lines-per-function\tFunction 'ApiReferencePage' has too many lines (307). Maximum allowed is 120.",
+    "src/pages/DocumentationPage.tsx\tmax-lines-per-function\tFunction 'DocumentationPage' has too many lines (180). Maximum allowed is 120.",
+    "src/pages/HomePage.tsx\tmax-lines\tFile has too many lines (652). Maximum allowed is 500.",
+    "src/pages/HomePage.tsx\tmax-lines-per-function\tFunction 'HomePage' has too many lines (560). Maximum allowed is 120.",
+    "src/pages/ResultsPage.tsx\tmax-lines-per-function\tFunction 'ResultsPage' has too many lines (218). Maximum allowed is 120.",
+    "src/pages/SetupPage.tsx\tmax-lines-per-function\tFunction 'SetupPage' has too many lines (254). Maximum allowed is 120."
+  ]
+}

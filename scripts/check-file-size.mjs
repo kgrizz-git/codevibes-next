@@ -1,16 +1,27 @@
 #!/usr/bin/env node
 // check-file-size.mjs
-// Fails if any file exceeds MAX_LINES, and greps staged non-TS files for
+// Fails if any source/config file exceeds MAX_LINES, and greps staged non-TS files for
 // machine-specific absolute paths (macOS/Linux home directories, Windows
 // drives) that would break under a subpath deployment or on another machine.
 //
 // Usage:
-//   node scripts/check-file-size.mjs            # whole repo (CI)
+//   node scripts/check-file-size.mjs            # whole repo (blocking)
 //   node scripts/check-file-size.mjs --staged   # only staged files (pre-commit)
+//   node scripts/check-file-size.mjs --advisory # report without blocking
+//
+// The legacy ceilings in structural-exceptions.json let existing large files
+// stay temporarily while preventing them from growing. New files remain
+// subject to the normal MAX_LINES limit.
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 const MAX_LINES = 500;
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const { exceptions = {} } = JSON.parse(
+  readFileSync(join(ROOT, "scripts", "structural-exceptions.json"), "utf8"),
+);
 const EXCLUDE = new Set([
   "node_modules",
   "dist",
@@ -38,11 +49,14 @@ function listFiles(staged) {
 }
 
 function isExcluded(path) {
+  // Long-form docs are governed by the link/guidance checks, not a source-code
+  // structural limit. This keeps the gate focused on maintainable code.
+  if (path.endsWith(".md")) return true;
   return path.split("/").some((seg) => EXCLUDE.has(seg));
 }
 
 const staged = process.argv.includes("--staged");
-const strict = process.argv.includes("--strict");
+const advisory = process.argv.includes("--advisory");
 let failures = 0;
 
 for (const file of listFiles(staged)) {
@@ -54,8 +68,13 @@ for (const file of listFiles(staged)) {
   // A trailing newline produces one empty trailing item; drop it so
   // "a\n" counts as 1 line while "a" (no newline) and "" keep their counts.
   const lineCount = content.endsWith("\n") ? lines.length - 1 : lines.length;
-  if (lineCount > MAX_LINES) {
-    console.error(`✖ ${file}: ${lineCount} lines exceeds limit of ${MAX_LINES}`);
+  const exception = exceptions[file];
+  const maxLines = exception?.maxLines ?? MAX_LINES;
+  if (lineCount > maxLines) {
+    const qualifier = exception
+      ? `grandfathered ceiling of ${maxLines}`
+      : `limit of ${MAX_LINES}`;
+    console.error(`✖ ${file}: ${lineCount} lines exceeds ${qualifier}`);
     failures++;
   }
 
@@ -78,10 +97,8 @@ for (const file of listFiles(staged)) {
 
 if (failures > 0) {
   console.error(`\n${failures} file-size/absolute-path check(s) failed.`);
-  // Advisory by default (matches complexity rules starting as `warn`); pass
-  // --strict to make this a hard gate once a cleanup commit lands.
-  if (strict) process.exit(1);
-  console.log("(advisory only — these did not block; run with --strict to enforce)");
+  if (!advisory) process.exit(1);
+  console.log("(advisory only — these did not block)");
 } else {
   console.log("✓ check-file-size passed");
 }

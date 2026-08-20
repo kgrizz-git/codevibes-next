@@ -1,5 +1,7 @@
 # Plan: Pre-commit / Pre-push Hooks + CI Quality Gates
 
+> **Status:** archived
+
 > **Historical planning document** — a dated pre-implementation snapshot written
 > 2026-08-18. All steps have since been implemented (hooks, lint, typecheck,
 > tests, CI, security scans; see PR #8). The "Current state" line below
