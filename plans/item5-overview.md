@@ -1,33 +1,54 @@
-# Plans: Item 5 — Broader Language & Pattern Coverage + Effort/Detail Layers
+# Plans: Item 5 — Broader Language Coverage and Effort Layers
 
-> **Status:** NEEDS REVIEW — collection of linked plans for `plans/TO_DO.md` item 5.
-> **Prerequisite:** Item 1 (end-to-end pipeline documentation) is DONE and merged
-> (`docs/review-pipeline/`). These plans depend on those docs as the spec.
-> **Branch:** `plans/item5-broader-coverage-effort`
-> **Date:** 2026-08-20
+> **Status:** REVIEWED — ready to implement in the stated order.
+> **Prerequisite:** the review-pipeline reference in `docs/review-pipeline/` remains the
+> implementation spec. `deepseekService.ts` must remain byte-for-byte intact until the provider
+> migration retires `USE_LEGACY_PROVIDER`.
+> **Date reviewed:** 2026-08-20
 
-## Scope of item 5 (from TO_DO)
-1. Broaden file categorization, ignore patterns, and review pattern matching for **more languages and greater variation** (currently a limited set).
-2. **Enhance reviews further** via **selectable layers of effort and detail** for the agents (e.g. lightweight "quick pass" vs. deep "thorough pass"), scaling prompt depth, file cap, and token budget. Surface the layer in the UI, persist it per-analysis, and report it in the `complete`/estimate payloads. (Parallelism is NOT in scope — `BATCH_SIZE` is hardcoded and untouched.)
+## Scope
 
-## Why three plans
-Item 5 is really three separable workstreams with different risk profiles and reviewers:
+1. Admit more source and infrastructure languages into the review funnel, and make the existing
+   TypeScript, Go, and Rust support use their real entry-point conventions.
+2. Add a per-analysis `quick` / `standard` / `thorough` setting. It must control scope now,
+   prompt/output budget once the new provider path is live, be visible in the UI, and be retained
+   with saved analysis history.
 
-| Plan | Workstream | Risk | Depends on |
-|---|---|---|---|
-| [A. Broader languages & patterns](./item5-a-broader-languages.md) | `fileFilter.ts` pattern/language expansion | Low (config-like edits) | item 1 docs |
-| [B. Effort / detail layers](./item5-b-b-effort-layers.md) | API + orchestration + UI + client-store persistence (**B-now**, no `deepseekService.ts` edit) + prompt-depth variants (**B-after-provider-Step-1**) | Medium-High (cross-cutting, schema + UI change) | item 1 docs; **blocked on provider plan Step 1 for prompt/`max_tokens` variants** |
-| [C. Docs-sync maintenance](./item5-c-docs-sync.md) | keep `docs/review-pipeline/` accurate as A/B land, incl. regenerating `generated-contract.md` + `MAPPINGS` | Low (process) | A, B |
+`BATCH_SIZE` remains 5. Increasing fetch parallelism is explicitly out of scope.
 
-Plan B is split into **B-now** (file cap, API validation, `effort` in `complete`/estimate payloads, estimate math, UI `EffortSelector`, client-store persistence — none in the frozen file) and **B-after-provider-Step-1** (prompt-depth variants + per-model `max_tokens`, once the new provider path exists). Plan A can ship independently and first. Plan C is a standing requirement.
+| Plan | Deliverable | Ordering / important boundary |
+|---|---|---|
+| [A. Broader languages and patterns](./item5-a-broader-languages.md) | safe, tested classifier expansion | Can ship first and independently. |
+| [B. Effort layers](./item5-b-effort-layers.md) | API, scope caps, UI, history, then prompt/output variants | Scope/history work can ship before the provider migration; prompt and output-token changes cannot. |
+| [C. Documentation and contract maintenance](./item5-c-docs-sync.md) | docs and source-contract checks | Required in every A/B PR, not a deferred cleanup. |
 
-## Standing rule (mirrors AGENTS.md)
-Any change from A or B that alters file-selection rules, ignore/priority patterns, the agent
-prompts or JSON schema, generation params (`temperature`/`max_tokens`), cost/pricing logic, or
-`MAX_FILES_PER_PRIORITY` **must update the corresponding `docs/review-pipeline/` page** before merge.
+## Decisions made by this review
 
-## Open questions for reviewers
-- Default effort layer (recommend `standard` to preserve today's behavior).
-- UI placement of the effort selector (recommend the Analyze form, alongside priority).
-- Whether effort is per-analysis or per-priority (recommend per-analysis, applied to all 3 priorities it runs).
-- Whether `quick` should cap output severity (recommend no hard cap; just terser/fewer files + lower `max_tokens`).
+- The default is `standard`; its file cap and legacy prompt behavior remain today's behavior.
+- Effort is captured when an analysis starts and is reused for all three priority passes. The
+  selector is disabled while a run is active or awaiting approval, so one saved analysis cannot
+  mix effort levels.
+- Terraform is in scope: `.tf` and `.tfvars` are reviewed as P1 infrastructure/security inputs;
+  `.terraform/**` is ignored. Extensionless scripts remain outside this item.
+- The classifier must not use unrestricted `**/*main*`, `**/*test*`, `**/*model*`, or similar
+  globs. With `matchBase: true`, those patterns also promote documentation and unrelated names
+  (for example `domain.ts` matches `*main*`). New P1/P2 rules must be exact conventions or be
+  restricted to recognized reviewable extensions.
+- “Persisted per-analysis” means the saved `analyses` history record stores the resolved effort.
+  Remembering a user's last selector value is a separate convenience only.
+- A static “review scope” explanation is useful, but a per-file rule trace and ignored-file
+  drill-down require a deliberate backend contract. They are not hidden inside Plan A's low-risk
+  classifier patch; Plan B specifies the bounded API/UI work needed if included in the release.
+
+## Standing documentation rule
+
+Any change to file selection, prompts/schema, generation parameters, cost/estimate logic, SSE
+payloads, or file-cap configuration updates the corresponding `docs/review-pipeline/` page in the
+same PR. Run both documentation checks before merge. Plan C has the exact mapping and commands.
+
+## Deferred work
+
+- Per-repository user-editable glob rules. This needs validation, persistence, support UX, and a
+  clear security/abuse model; it is not config-like work.
+- Extensionless executable detection and language inference from shebangs.
+- Fetch parallelism and live model-token streaming.

@@ -1,158 +1,130 @@
 # Plan B (Item 5) — Selectable Effort / Detail Layers
 
-> **Status:** NEEDS REVIEW
-> **Workstream:** let users choose review **effort/detail** (e.g. `quick` vs `standard` vs
-> `thorough`), scaling agent prompt depth, file cap, and token budget; surface it
-> in the UI, persist per-analysis, and report it in the `complete`/estimate payloads.
-> **Part of:** `plans/item5-overview.md`. **Prereq:** item 1 docs
-> (`docs/review-pipeline/03-orchestration-sse.md`, `04-reviewing-agent.md`).
-> **Risk:** Medium-High — cross-cutting change (config → API → service → SSE payload → UI → store).
-> **Coordinates with:** provider plan (`plans/model-provider-compatibility.md`) — do not hardcode
-> layer→token math in a way that blocks provider-aware pricing later.
+> **Status:** REVIEWED — split around the legacy-provider constraint.
+> **Risk:** High: request validation, SSE, estimation, persisted history, and the analysis UI all
+> change together.
 
-## Current state (verified)
-- **API contract** (`analysisController.ts`): `POST /api/analyze` body = `{ repoUrl, apiKey, priority }`
-  (`:20`); `priority` validated to 1|2|3 (`:33-37`). `GET /api/estimate?repoUrl=` (`:91`).
-  SSE headers + 15s heartbeat (`:43-59`). Client disconnect logged (`:50`).
-- **Orchestration** (`analysisService.ts`): `analyzeRepository(res, repoUrl, apiKey, priority, githubToken?)`
-  (`:81`); `MAX_FILES_PER_PRIORITY = parseInt(process.env.MAX_FILES_PER_PRIORITY || '20')` (`:23`);
-  calls `deepseekService.streamAnalysis(files, apiKey, priority)` (`:161`); `complete` payload
-  `{ priority, filesScanned, issuesFound, tokensUsed, cost, nextPriorityEstimate? }` (`:198-205`);
-  `getEstimate` uses `AVG_TOKENS_PER_FILE = 500`, `OUTPUT_RATIO = 0.2` (`:257-258`).
-- **Agent** (`deepseekService.ts`): `getPromptForPriority(priority)` (`:633`) → 3 prompts;
-  `temperature: 0.3`, `max_tokens: 8000` (`:728,729,804,805`); enforced JSON schema; P1=CRITICAL/HIGH/MEDIUM/LOW,
-  P2=HIGH/MEDIUM/LOW, P3=MEDIUM/LOW.
-- **Frontend**: `AnalyzePage.tsx` consumes SSE for repo analysis. NOTE: `useAnalysis.ts` is the
-  **code-snippet** path (priority 1 only) — the provider plan Step 3 **deletes** this path and the
-  hook entirely, so effort support must NOT be added there. `analysisStore` holds `apiKey`
-  (priority is NOT persisted today — see persistence note). No effort concept exists today.
+## Verified baseline and constraints
 
-## Proposed design
-Introduce an `effort` dimension orthogonal to `priority`. Three layers:
+- `POST /api/analyze` accepts `{ repoUrl, apiKey, priority }`; `GET /api/estimate` accepts only
+  `repoUrl`. Both the backend and `src/lib/api.ts` have separately declared contracts.
+- `MAX_FILES_PER_PRIORITY` is an import-time `parseInt` value used by the live fetch, the next-tier
+  estimate, and the pre-analysis estimate. There are no `analysisService` unit tests today.
+- The legacy stream always sends `max_tokens: 8000` and builds prompts in frozen
+  `deepseekService.ts`. A B-now change cannot truthfully claim to change prompt depth or output
+  budget on that path.
+- The analysis page runs priorities serially. Its history save currently recomputes price from a
+  hard-coded `$0.14` rate and its async state updates can leave the final save with stale totals.
+  Effort work must fix this session accounting rather than adding another client-side estimate.
+- `analysisStore` is not persisted as a Zustand store; only the API key has dedicated encrypted
+  storage. A new preference needs its own validated storage key and tests.
 
-| Layer | `max_tokens` | Effective file cap | Prompt depth | Target use |
-|---|---|---|---|---|
-| `quick` | 2000 | 5 | terse; "report only CRITICAL/HIGH, be concise" | fast pre-PR sanity |
-| `standard` | 8000 | 20 (today's default) | current prompts unchanged | default |
-| `thorough` | 8192 (cap) | 40 | deeper instructions; "report LOW too, include rationale" | pre-release audit |
+## Public contract
 
-Notes:
-- `standard` MUST preserve today's behavior exactly (no behavior change for existing users).
-- **`max_tokens` ceiling is model-dependent.** The current default model `deepseek-chat`
-  enforces `max_tokens ∈ [1, 8192]`; passing `16000` returns HTTP 400. So `thorough` caps at
-  **8192**. "Thoroughness" comes from the larger file cap (40) + deeper prompt text, NOT from a
-  higher `max_tokens`. Once the provider plan's registry lands, per-model `max_tokens` ceilings
-  should move there (see Coordination).
-- **No input-context overflow guard today.** `BATCH_SIZE = 5` is hardcoded (`githubService.ts:208`)
-  and this plan does NOT change parallelism. The 40-file `thorough` cap risks exceeding the model
-  context window on large repos; mitigate with a total-content/token budget in the prompt builder
-  (or accept the truncation risk) — call this out in implementation.
-- `temperature` stays 0.3. Effort is **per-analysis**, applied to whichever priority(ies) the
-  analysis runs.
+`EffortLevel = 'quick' | 'standard' | 'thorough'`. The server defaults a missing value to
+`standard`; it rejects non-strings, arrays, and unknown values with a JSON 400 before opening SSE.
+The resolved value is returned in every `complete` event (including the zero-files completion),
+the estimate payload, and saved analysis history.
 
-## Phases — split by the `deepseekService.ts` freeze
+Capture effort at **Start analysis**, keep it immutable through the three priority approvals, and
+disable the selector until the run ends. A user may remember a preferred default for the next run,
+but that preference never rewrites an in-flight or historical analysis.
 
-> **Critical dependency (validated):** `USE_LEGACY_PROVIDER` does **not** exist in code today —
-> there is no `aiProvider.ts`/new provider path yet (only plans + docs reference it). And
-> `deepseekService.ts` must stay **byte-for-byte intact** until the provider plan Step 1 retires
-> the legacy path. Therefore any change to `getPromptForPriority` or `max_tokens` **inside
-> `deepseekService.ts` cannot ship now**. Split execution accordingly:
+| Layer | B-now (legacy-safe) | After provider routing is live |
+|---|---|---|
+| quick | fetch/analyze at most 5 files per priority | concise prompt and provider-resolved lower output limit |
+| standard | 20 files; unchanged legacy prompt and 8000 output limit | standard prompt remains byte-for-byte equivalent in meaning |
+| thorough | 40 files, subject to the server safety maximum | deeper prompt and provider/model-resolved output limit |
 
-### B-now (ships without touching `deepseekService.ts`)
-All changes live in `analysisService.ts`, `analysisController.ts`, `types/index.ts`, and the
-frontend — none in the frozen file.
+The 40-file figure is a policy target, not permission to overrun a context window. The provider
+path must enforce a total input-content/token budget before sending a request and report truncation
+or skipped files; simply slicing a string is not acceptable because it can produce misleading
+reviews.
 
-- **Schema & config:** add `EffortLevel = 'quick' | 'standard' | 'thorough'` (`types/index.ts`).
-  Add `EFFORT_MAX_TOKENS` and `EFFORT_FILE_CAP` lookup maps (env-overridable; `standard` keeps
-  today's values: 8000 / 20). Document in `.env.example` (already lists `MAX_FILES_PER_PRIORITY`)
-  and `03-orchestration-sse.md`.
-- **API & orchestration:** `POST /api/analyze` accepts optional `effort` (default `standard`),
-  validate ∈ enum → 400 before SSE headers (`analysisController.ts:20` area). `analyzeRepository`
-  derives `maxFiles` from effort (replacing bare `MAX_FILES_PER_PRIORITY`) and passes `effort`
-  through — but when routing to the **legacy** `deepseekService.streamAnalysis`, the effort param
-  is **not** plumbed into prompt building (legacy path treats everything as `standard`). `complete`
-  payload gains `effort` (add it to BOTH the main site `:198-205` and the zero-files early-return
-  `:137-143`); `nextPriorityEstimate` uses the effort-aware file cap. `GET /api/estimate` accepts
-  `effort`; `getEstimate` projects per-effort file caps into cost (keep `AVG_TOKENS_PER_FILE=500`,
-  `OUTPUT_RATIO=0.2` × effort cap); return `effort`. Cover all cap sites: `analyzeRepository`,
-  `getEstimate`, and the estimate endpoint.
-- **Frontend surface & persistence (client-store only for MVP):**
-  - **Extract `EffortSelector.tsx`** as a separate component — mandatory, not optional, because
-    `AnalyzePage.tsx` is **1153 lines** (already over the 500-line cap; ceiling-capped in
-    `structural-exceptions.json`). Do not grow it inline.
-  - API client (`lib/api.ts`): send `effort` on `/api/analyze` and `/api/estimate`.
-  - `analysisStore`: persist **last-selected effort** (follow the existing `theme`/localStorage
-    pattern), NOT a DB column. **Do not claim `priority` is persisted** — it is not.
-  - **Refetch the estimate when effort changes** (`AnalyzePage` fetches `getEstimate` on repo
-    validation) so the cost projection tracks the selected layer.
-  - Results view: show the server-computed `cost` (not the hardcoded `0.14` sites in
-    `AnalyzePage.tsx:391,1042`), plus an effort badge. Coordinate with provider plan Step 2
-    ("frontend must stop computing cost").
-  - **Review-scope surface (paired with Plan A):** in the pre-analysis view, show *what is being
-    reviewed* — active ignore patterns, the recognized language/extension set, priority rules, a
-    per-file "matched `<rule>` → Pn" hint, and an "N files ignored" count with drill-down. This
-    makes the file/folder patterns passed visible in-app (not just in `docs/review-pipeline/`),
-    and sits next to the `EffortSelector` so users understand both *what* and *how deep*. Derive it
-    from the backend `fileFilter` rules (via an endpoint or the contract doc), never a client-only
-    copy that can drift.
-  - **Do NOT add effort to `useAnalysis.ts`** — that code-snippet path is deleted by provider plan
-    Step 3.
-- **Tests:** effort on both `complete` sites; `standard` payload shape identical to today (minus
-  the added field); effort validation 400 before SSE; effort-aware caps in `analyzeRepository` and
-  `getEstimate`; estimate math. Borrow the provider plan's test list.
+## Phase B1 — scope, API, UI, and history (may ship now)
 
-### B-after-provider-Step-1 (once `aiProvider.ts`/new path exists)
-- Move prompt-depth variants into the new provider service: `getPromptForPriority(priority, effort?)`
-  returns `standard` verbatim for `standard`, deeper/terser text for `thorough`/`quick`, preserving
-  the enforced JSON schema (add a schema-preservation contract test).
-- Make `max_tokens` per-model via the provider registry (so `thorough`'s ceiling is the model's,
-  not a hardcoded 8192). Keep `deepseekService.ts` untouched.
-- Update `04-reviewing-agent.md` and `06-extension-hooks.md` (the latter currently tells people to
-  edit `getPromptForPriority` in `deepseekService.ts` — wrong once B lands; repoint to the new
-  path).
-- **DB persistence (optional, defer):** if per-analysis history persistence is wanted, add an
-  `effort` column to `analyses` (`database.ts`) + `historyController.saveAnalysis` + `api.ts`, and
-  fold the migration into the provider plan Step 6 round (avoid two `ALTER TABLE`s). Existing rows
-  get `NULL` (mirror provider plan backfill). MVP ships client-store only.
+1. Put `EffortLevel`, `CompleteEventData.effort`, and `AnalysisEstimate.effort` in backend types;
+   mirror all affected types in `src/lib/api.ts`. Update request interfaces even if they are not
+   currently used at runtime.
+2. Add a pure, tested resolver for the per-effort cap. Preserve a global hard safety maximum and
+   make its semantics explicit:
+   - retain `MAX_FILES_PER_PRIORITY` as the administrator's upper bound, raising its documented
+     default to at least 40 before thorough can reach 40;
+   - introduce `EFFORT_QUICK_MAX_FILES`, `EFFORT_STANDARD_MAX_FILES`, and
+     `EFFORT_THOROUGH_MAX_FILES` defaults of 5/20/40; resolve each as `min(layerCap, globalCap)`;
+   - parse positive whole-number environment values strictly and fail configuration validation on
+     invalid values rather than accepting `parseInt('20oops')` or `NaN`.
+   This intentionally changes the meaning of the global default, so document the migration and
+   test a deploy still using `MAX_FILES_PER_PRIORITY=20` (thorough is safely capped at 20).
+3. Thread resolved effort and its resolved cap through `analysisController.analyze` →
+   `analyzeRepository` → both `getFilesForPriority` calls. Thread effort through `estimate` and
+   `getEstimate`; calculate all three capped buckets from the same resolver. Return the resolved
+   cap as `maxFilesPerPriority` as well as effort, so estimates remain explainable when an admin
+   cap limits thorough.
+4. Do **not** add `EFFORT_MAX_TOKENS` in B1. It would be unused on the frozen legacy path and
+   make the API promise false. Keep 500 input tokens/file and the 0.2 output ratio as the existing
+   estimate model; changing the file cap alone changes the projected total.
+5. Add `EffortSelector.tsx`; do not enlarge the already-excepted `AnalyzePage.tsx`. The component
+   is controlled by an analysis-session effort value. Persist only the last selection for the next
+   run in a namespaced local-storage key, validate the stored string, and fall back to `standard`.
+   Send effort on both analyze and estimate calls; cancel/ignore stale estimate responses when the
+   selector or repository changes.
+6. Add explicit run accounting: accumulate server `complete.cost` and `tokensUsed` in a session
+   object/store, use those server values for live UI and `saveAnalysis`, and pass an immutable
+   final snapshot to history persistence. Do not compute cost in `AnalyzePage` or `ResultsPage`.
+7. Satisfy persistence per analysis now: add a nullable-or-defaulted `effort` column through the
+   database migration path, database types, history controller, API client, save payload, and
+   history response/view. Old rows display “standard/unknown legacy value” deliberately; do not
+   infer a value from their token count. Coordinate the migration ordering with the provider plan,
+   but do not defer this requirement to its optional later schema work.
 
-## Coordination / risks
-- **Provider plan:** pricing is being made provider-aware there; `max_tokens` ceilings belong in
-  the registry. Effort layer math must read from the same cost source (`calculateCost`) and not
-  bake in DeepSeek-only assumptions. Defer provider-specific effort pricing to that plan.
-- **deepseekService.ts legacy constraint (validated):** `USE_LEGACY_PROVIDER` is not in code yet,
-  and the file is frozen. B-now must NOT edit it; the legacy path simply ignores `effort` (treats
-  it as `standard`). Prompt/`max_tokens` variants wait for B-after-provider-Step-1.
-- **Machine-checked contract:** B-now changes to `MAX_FILES_PER_PRIORITY`/cap math or `max_tokens`
-  make `generated-contract.md` stale → `check:pipeline-contract` fails. Run
-  `npm run docs:pipeline-contract -- --write` and commit. Extend `MAPPINGS` in
-  `scripts/check-review-pipeline-docs.mjs` if a new pipeline source file is added (Plan C).
-- **UX scope creep:** keep the selector minimal; effort is per-analysis only (not per-priority).
+## Phase B2 — bounded review-scope transparency (decision gate)
 
-## Acceptance
-- **B-now ships independently** of the `deepseekService.ts` freeze: no edit to the frozen file;
-  legacy path ignores `effort` (acts as `standard`).
-- `standard` is behavior-identical to today for the legacy path (payload shape identical minus the
-  added `effort` field on both `complete` sites).
-- `quick`/`thorough` measurably change file cap (+ prompt depth once B-after-provider-Step-1
-  lands); cost estimate reflects the layer. `thorough` `max_tokens` ≤ 8192 (model ceiling).
-- API rejects invalid `effort` with 400 (before SSE headers); missing `effort` defaults to
-  `standard`.
-- UI: `EffortSelector.tsx` extracted (does NOT grow `AnalyzePage.tsx`); persists last-selected
-  effort to client store; sent on analyze + estimate; estimate refetched on effort change;
-  results show server `cost` + effort badge.
-- `npm run typecheck`, `npm test`, `npm run lint`, `scripts/check-file-size --strict`,
-  `npm run check:pipeline-contract`, `npm run check:pipeline-docs` all pass.
-- `docs/review-pipeline/` pages updated (Plan C), including regenerated `generated-contract.md`.
+If the product accepts the scope UI proposed during Plan A review, make it a defined contract:
 
-## Backwards compatibility
-- Adding `effort` to `complete`/estimate is additive (old clients tolerate the new field). Cross-
-  reference the provider plan's deploy-order note ("old tabs must tolerate the old `complete`
-  shape"). Add a test that an old-style consumer still parses the new payload.
+- Extend the estimate response with `ignoredFiles` count and static, versioned classifier metadata
+  (recognized extensions and named rule summaries). Do not return raw ignored paths by default.
+- If per-file explanations are required, add a classifier function that returns `{ priority, ruleId
+  }` and an authenticated, size-bounded endpoint/estimate field containing only selected paths and
+  rule IDs. Define pagination and private-repo authorization explicitly.
+- Render rule summaries and counts near the selector. A full ignored-file drill-down is a separate
+  opt-in endpoint with pagination; never manufacture reasons in the frontend.
 
-## Open questions (for reviewers)
-- Default layer = `standard` (recommended).
-- Should `quick` cap severity to CRITICAL/HIGH, or just be terser with fewer files? (Recommend
-  fewer files + lower `max_tokens`, no severity cap.)
-- Is effort per-analysis or per-priority? (Recommend per-analysis.)
-- DB persistence of effort: MVP client-store only, or fold a column into provider plan Step 6?
-  (Recommend MVP client-store, defer DB.)
+This phase is not needed to make effort layers functional. It must not quietly turn Plan A into a
+new GitHub-tree data API.
+
+## Phase B3 — prompt and output budget (after provider Steps 1+2 **and** routing)
+
+The new provider service/registry owns `getPromptForPriority(priority, effort)` and effective
+`max_tokens`. It must preserve the JSON schema and standard behavior, clamp the requested layer
+limit to the selected model capability, and expose the resolved limit in server diagnostics or the
+estimate contract as appropriate. Do not modify `deepseekService.ts`.
+
+This phase cannot ship merely when `aiProvider.ts` exists: provider plan Step 5 must route normal
+requests through it. While `USE_LEGACY_PROVIDER=true` routes DeepSeek requests to the frozen file,
+the UI must either label effort as scope-only or the server must return a capability flag; it may
+not claim quick/thorough changed prompt/output behavior.
+
+## Required tests
+
+- Controller: omitted effort defaults; every invalid body/query shape returns 400 before SSE;
+  valid effort is forwarded; estimate effort is parsed exactly once.
+- Service (new mock-based `analysisService` suite): resolver precedence/invalid config, each live
+  and next-priority fetch uses the same resolved cap, estimate bucket math, and `effort` on normal
+  and zero-file complete payloads.
+- API/frontend: request/query serialization, effort-change estimate race handling, selector
+  preference validation, locked session effort across approval, and display/history use accumulated
+  server cost rather than a `$0.14` formula.
+- Database/history: migration/backfill, saved effort round-trip, and legacy-row rendering.
+- B3 provider tests: standard schema/prompt contract, layer-to-model-limit clamping, input budget
+  truncation reporting, and legacy-routing capability behavior.
+
+## Documentation and verification
+
+Update `.env.example`, `03-orchestration-sse.md`, `05-cost-model.md` if estimate semantics change,
+`04-reviewing-agent.md` for B3, `06-extension-hooks.md`, and the pipeline index. Update the
+contract generator together with any change to source cap representation; the current regex expects
+the old `MAX_FILES_PER_PRIORITY = parseInt(...)` declaration and will otherwise throw.
+
+Run `npm run test:all`, `npm run typecheck`, `npm run lint:all`, `npm run check:pipeline-contract`,
+`npm run check:pipeline-docs`, and `npm run check:structure`.
