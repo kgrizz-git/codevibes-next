@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "description": "Temporary ceilings for legacy files above the 500-line structural limit. Values must only decrease; remove an entry once the file is at or below 500 lines.",
+  "exceptions": {
+    "codevibes-backend/src/services/deepseekService.ts": {
+      "maxLines": 904,
+      "reason": "Byte-for-byte legacy-provider constraint; retire with USE_LEGACY_PROVIDER."
+    },
+    "src/components/ui/sidebar.tsx": {
+      "maxLines": 637,
+      "reason": "Split into focused sidebar primitives."
+    },
+    "src/pages/AnalyzePage.tsx": {
+      "maxLines": 1154,
+      "reason": "Extract page sections and analysis orchestration helpers."
+    },
+    "src/pages/HomePage.tsx": {
+      "maxLines": 652,
+      "reason": "Extract page sections into focused components."
+    }
+  }
+}

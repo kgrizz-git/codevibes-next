@@ -1,7 +1,11 @@
 #!/usr/bin/env sh
 set -e
 
-# Secret scan (skips with a notice if gitleaks is not installed — CI still enforces it)
+# Pre-commit is intentionally INEXPENSIVE and DETERMINISTIC (no network):
+#   1. staged secret scan (skips with a notice if gitleaks is missing — CI enforces)
+#   2. lint-staged (eslint --fix on staged TS/TSX)
+#   3. cheap structural checks (blocking, with legacy line/complexity ceilings)
+# Doc-link / guidance / bundle checks run in CI (`npm run check:all`), not here.
 if command -v gitleaks >/dev/null 2>&1; then
   gitleaks protect --staged
 else
@@ -9,8 +13,10 @@ else
 fi
 npx lint-staged
 node scripts/check-file-size.mjs --staged
+node scripts/check-complexity-budget.mjs
 
-# Static security analysis on changed TS/TSX files (skips if none staged or semgrep absent)
+# Static security analysis on changed TS/TSX files (skips if none staged or
+# Semgrep is unavailable locally; CI enforces the full scan).
 if command -v semgrep >/dev/null 2>&1; then
   if git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' | grep -q .; then
     git diff --cached -z --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' | xargs -0 semgrep scan --config p/typescript --config p/javascript

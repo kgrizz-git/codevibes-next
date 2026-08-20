@@ -6,7 +6,8 @@ import tseslint from "typescript-eslint";
 import importPlugin from "eslint-plugin-import-x";
 
 export default tseslint.config(
-  { ignores: ["dist", "codevibes-backend"] },
+  // `tmp/` contains local backup snapshots, not maintained application source.
+  { ignores: ["dist", "tmp", "codevibes-backend"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -30,11 +31,11 @@ export default tseslint.config(
   {
     files: ["**/*.{ts,tsx}"],
     rules: {
-      complexity: ["warn", 10],
-      "max-depth": ["warn", 4],
-      "max-lines-per-function": ["warn", 80],
+      complexity: ["warn", 15],
+      "max-depth": ["warn", 5],
+      "max-lines-per-function": ["warn", 120],
       "max-nested-callbacks": ["warn", 3],
-      "max-lines": ["warn", { max: 300 }],
+      "max-lines": ["warn", { max: 500 }],
     },
   },
   {

@@ -1,0 +1,55 @@
+name: upkeep
+
+# Scheduled, NON-BLOCKING maintenance. Runs purely on the checked-out repo with
+# no secrets and the committed lockfiles (`npm ci` keeps installation
+# reproducible). Failures here do not gate merges (continue-on-error: true and
+# the job is not required by branch protection).
+on:
+  schedule:
+    - cron: "17 6 * * 1" # weekly, Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upkeep:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            codevibes-backend/package-lock.json
+      - name: Install dependencies from lockfiles
+        run: |
+          npm ci
+          npm ci --prefix codevibes-backend
+
+      - name: Report npm outdated (root)
+        run: npm outdated || true
+
+      - name: Report npm outdated (backend)
+        run: npm --prefix codevibes-backend outdated || true
+
+      # Deterministic, offline check: compare the installed caniuse-lite version
+      # (the data backing browserslist) against the latest published version in
+      # the local npm metadata cache is not available offline, so instead we
+      # surface the installed version and age of the local browserslist db cache.
+      - name: Browserslist data age
+        run: |
+          echo "installed caniuse-lite: $(npm ls caniuse-lite --depth=0 2>/dev/null | grep caniuse-lite || echo unknown)"
+          if [ -f node_modules/.cache/browserslist/*.json ]; then
+            ls -l node_modules/.cache/browserslist/ 2>/dev/null || true
+          else
+            echo "no browserslist db cache present (browserslist lazily generates it on build)"
+          fi
+
+      - name: Documentation / decision review-date check
+        run: node scripts/check-guidance.mjs || true

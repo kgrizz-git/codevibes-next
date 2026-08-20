@@ -40,6 +40,8 @@ SSE events → AnalyzePage:  status · file · issue · complete · error
 - [4. The reviewing agent — `deepseekService.ts`](./review-pipeline/04-reviewing-agent.md)
 - [5. Cost model — `tokenCounter.ts`](./review-pipeline/05-cost-model.md)
 - [6. Extension hooks (forward-looking)](./review-pipeline/06-extension-hooks.md)
+- [Generated source contract](./review-pipeline/generated-contract.md) — machine-checked
+  limits, pricing, extensions, and event names
 
 ## Key facts (quick reference)
 

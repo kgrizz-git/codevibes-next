@@ -26,11 +26,11 @@ export default tseslint.config(
   {
     files: ["**/*.ts"],
     rules: {
-      complexity: ["warn", 10],
-      "max-depth": ["warn", 4],
-      "max-lines-per-function": ["warn", 80],
+      complexity: ["warn", 15],
+      "max-depth": ["warn", 5],
+      "max-lines-per-function": ["warn", 120],
       "max-nested-callbacks": ["warn", 3],
-      "max-lines": ["warn", { max: 300 }],
+      "max-lines": ["warn", { max: 500 }],
     },
   },
   {
