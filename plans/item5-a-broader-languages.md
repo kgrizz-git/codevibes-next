@@ -16,10 +16,13 @@
   and ignore logic — extend it for new cases.
 
 ## Goals
-1. **More languages:** add common source extensions to the P3 catch-all (`PRIORITY_3_PATTERNS`,
-   `:212-221`) so they enter the review funnel. Clean proposed list (note: `tsx`, `swift`,
-   `rust`/`rs`, `rb` are already present; do NOT re-add):
+1. **More languages (extension coverage is the real lever):** add common source extensions to
+   the P3 catch-all (`PRIORITY_3_PATTERNS`, `:212-221`) so they enter the review funnel. Clean
+   proposed list (note: `tsx`, `swift`, `rust`/`rs`, `rb` are already present; do NOT re-add):
    `kt, cs, c, cpp, h, hpp, scala, ex, exs, dart, lua, r, pl, sh, bash, zsh, vue, svelte`.
+   - **Author's actual stack (priority):** `.dart` (Flutter app) and `.cs` (C#) are the
+     highest-value additions — both are currently absent and would otherwise be dropped. Python
+     (`.py`) is already covered. Ensure these land in the extension list.
    - **Terraform:** decide explicitly — either add `*.tf` to the P3 catch-all (or a P1
      `.tfvars`-adjacent rule) so Terraform is reviewed, OR state it is out of scope. Do not add
      `.terraform/**` + `*.tfvars` to IGNORE without also funneling `*.tf`, or Terraform code
@@ -53,21 +56,40 @@ The current patterns assume **English, convention-over-configuration layouts** (
 - **Languages with no extension or unconventional extensions** (e.g. Go `main`, shell without
   `.sh`, build scripts) — already partially dropped today.
 
-Two design directions (do NOT implement both blindly — pick per the decision below):
-- **(A) Make defaults general enough:** keep curated patterns but broaden them to catch common
-  structural variants (`**/packages/**/src`, `**/apps/**/src`, `**/internal/**`, `**/cmd/**`) and
-  rely on the **extension catch-all** so any recognized source file is at least reviewed at P3
-  regardless of folder name. This is low-risk and the recommended default posture.
-- **(B) Per-project user-tweakable patterns:** let users override the ignore list, P1/P2 globs,
-  and the extension set per repository (stored in Settings / repo config). Much higher risk
-  (UI, persistence, validation, security — user globs could widen the attack surface or break
-  `minimatch`), and overlaps with the provider-plan's eventual config story. Treat as a **future
-  enhancement**, not part of this plan's MVP.
+**Reality check — these are NOT common TypeScript layouts.** `packages/`+`apps/` are monorepo
+workspace conventions (only for multi-package repos); `internal/`+`cmd/` are Go; `crates/` is
+Rust. A *standard* TS app is flat (`src/components`, `src/services`, `src/utils`, `src/pages`) —
+which the current patterns already cover. So broad glob additions like `**/packages/**/src` would
+mostly add noise for typical repos and solve a problem most users don't have.
 
-**Decision for this plan:** pursue (A) — broaden defaults to be structure-agnostic where cheap,
-and lean on the extension catch-all so language coverage is about *extensions*, not folder names.
-Explicitly **defer (B)** to a later, separate plan; note it as a known limitation. Add tests that
-assert `packages/foo/src/x.ts` and `internal/bar.go` land in sensible tiers.
+**The real generality gap is language + naming, not folder shape.** Representative real-world
+layouts (e.g. this repo's author): TS apps with ad-hoc subfolders under `src/` such as
+`src/gui`, `src/frontend`, `src/backend`, and arbitrary others; Python packages (often no `src/`
+at all — `myproject/__init__.py`); one Flutter/Dart app; one C#. The actual problems:
+1. **Unrecognized extensions get dropped** — `.dart` (Flutter) and `.cs` (C#) are NOT in the P3
+   catch-all, so those repos fall outside the funnel entirely. This is the highest-priority fix.
+2. **P1/P2 rely on English keyword folder names** (`**/services`, `**/auth`, `**/controllers`).
+   Non-standard or non-English names (`src/backend`, `negocio/`, `控制层/`) won't match → land in
+   P3 or get dropped. Prioritization is weak for anything not in an English-named dir.
+3. **Non-standard layouts still land in P3** (reviewed, just lower priority) — acceptable, because
+   the extension catch-all funnels them in. The only true failure is the *drop* case (unrecognized
+   extension), fixed by (1).
+
+Two design directions:
+- **(A) Make defaults general via extensions + name-signals (recommended):** extend the P3
+  extension list (`.dart`, `.cs`, …), and make P1/P2 match by **language-agnostic name signals**
+  (filenames/dirs containing `auth`, `secret`, `config`, `db`, `model`, `route`, `test`,
+  `security`) rather than assuming English structural dirs exist. This helps `src/backend/foo.py`
+  and `negocio/bar.cs` alike, and is low-risk.
+- **(B) Per-project user-tweakable patterns:** let users override ignore list / P1/P2 globs /
+  extension set per repo (Settings or repo config). Much higher risk (UI, persistence,
+  validation, security — user globs widen attack surface / can break `minimatch`) and overlaps the
+  provider plan's eventual config story. **Defer** to a later, separate plan; note as limitation.
+
+**Decision for this plan:** pursue (A). Drop the monorepo/Go/Rust globs. Language coverage is
+about *extensions*; prioritization is about *name signals*, not assumed folder structure.
+Explicitly **defer (B)**. Add tests asserting `src/backend/foo.py` (name signal → P2) and a
+`.dart` file (extension → at least P3) land in sensible tiers.
 
 ## In-app transparency: show what is (and isn't) being reviewed
 Today the UI lists the matched file paths per priority (`AnalyzePage.tsx:613-624`) but gives
@@ -87,9 +109,13 @@ must add (frontend, likely in Plan B's UI phase or a small standalone UI task):
 ## Proposed changes (`fileFilter.ts`)
 - Extend `PRIORITY_3_PATTERNS` catch-all line to include the new extensions.
 - Append to `PRIORITY_1_PATTERNS` / `PRIORITY_2_PATTERNS` the new dir/keyword globs.
-- **Broaden structural patterns** to catch common non-standard layouts (see above): e.g.
-  `**/packages/**/src`, `**/apps/**/src`, `**/internal/**`, `**/cmd/**`, `**/crates/**`. Prefer
-  glob breadth over enumerating frameworks.
+- **Broaden P1/P2 by name-signals, not folder shape** (see reality check above): add
+  language-agnostic patterns keyed on filenames/dirs containing `auth`, `secret`, `config`,
+  `db`/`database`, `model`, `route`/`router`, `security`, `test` (already partly present — fill
+  gaps and add `**/*model*`, `**/*route*`, `**/*security*`-style signals). Prefer `**/*signal*`
+  minimatch over assuming English structural dirs.
+- Do NOT add monorepo/Go/Rust folder globs (`packages/`, `apps/`, `internal/`, `cmd/`, `crates/`)
+  — they are not common TS layouts and add noise.
 - Keep `minimatch` glob style; avoid enumerating every framework (prefer `**/graphql/**` over
   `**/graphql/**` + `**/graphql.ts` redundancy).
 - Update the `getPriorityDescription`/UI labels only if a new *named* tier is introduced
@@ -101,9 +127,10 @@ must add (frontend, likely in Plan B's UI phase or a small standalone UI task):
   - A `**/graphql/resolvers/x.ts` → priority 2.
   - A `.envrc` → priority 1.
   - A `.terraform/...` → ignored.
-  - **Structural-layout cases:** `packages/foo/src/x.ts` and `internal/bar/go` land in sensible
-    tiers (P3 at minimum, P2 if a business-logic glob matches) — proves folder-structure
-    generality, not just extension matching.
+  - **Real-layout cases (not monorepo/golang):** `src/backend/foo.py` matches a name-signal →
+    P2; a `.dart` file (Flutter) and a `.cs` file (C#) enter the funnel at ≥ P3. Proves coverage
+    for the author's actual repos (TS ad-hoc subfolders, Python packages, Flutter, C#), not
+    assumed folder shapes.
 - Keep total file ≤ 500 lines (quality-gate cap); if it grows, split test cases into a co-located
   `__tests__` data file (does not count against the cap the same way, but stay tidy).
 
