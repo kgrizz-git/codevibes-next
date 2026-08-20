@@ -51,14 +51,14 @@ SSE events → AnalyzePage:  status · file · issue · complete · error
 | Priority model | ignore → P1 (security) → P2 (business) → P3 (supporting), first match wins (`fileFilter.ts:244`) |
 | Matcher | `minimatch` with `{ dot: true, matchBase: true }` (`fileFilter.ts:229`) |
 | Agent model | `process.env.DEEPSEEK_MODEL \|\| 'deepseek-chat'` (`deepseekService.ts:17`) |
-| Generation params | `temperature: 0.3`, `max_tokens: 8000` (`deepseekService.ts:729,805`) |
+| Generation params | `temperature: 0.3`, `max_tokens: 8000` (`temperature` at `deepseekService.ts:728,804`, `max_tokens` at `:729,805`) |
 | Output contract | JSON only, no markdown; issue schema `{severity, category, file, line, title, description, impact, fix, codeExample}` |
 | Cost estimate | `ceil(len/4)` tokens; DeepSeek `deepseek-chat` pricing `0.14` in / `0.28` out per 1M (`tokenCounter.ts:7,10-11`) |
 | Token budget for estimate | `AVG_TOKENS_PER_FILE = 500`, `OUTPUT_RATIO = 0.2` (`analysisService.ts:257-258`) |
 
 ## Known gaps (captured so downstream plans can fix them)
 
-- **SSE streaming drops the final chunk value** on `done` and **never calls `decoder.flush()`** (`deepseekService.ts:831-863`). Multi-byte chars split across the last chunk boundary can be lost. Tracked for fix in the provider plan's SSE section.
+- **SSE streaming never calls `decoder.flush()`** after the read loop (`deepseekService.ts:831-863`). `done` from `reader.read()` carries no data payload, so nothing is literally "dropped" on `done`; the real gap is that any internally buffered incomplete multi-byte sequence from the final `decoder.decode(value, {stream:true})` is silently discarded. With self-contained `Uint8Array` chunks this is a theoretical edge case, but best practice is to `flush()` — tracked for fix in the provider plan's SSE section.
 - `[DONE]` is handled via `continue` rather than `break` (`deepseekService.ts:842`).
 - Cost pricing is **hardcoded** to DeepSeek `deepseek-chat` (`tokenCounter.ts:10-11`); not provider-aware yet (provider plan adds `pricingStatus`/`costBasis`).
 - `deepseek-reasoner` is selectable via `DEEPSEEK_MODEL` but its `reasoning_content` is only logged, never surfaced (`deepseekService.ts:848-853`).

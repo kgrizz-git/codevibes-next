@@ -17,8 +17,9 @@ doc page that covers the relevant code.
 ## Add a new model provider (provider plan)
 - Network layer + SSE parsing live in `deepseekService.ts` (`04-reviewing-agent.md`):
   endpoint, `MODEL`, request body, streaming reader, `[DONE]` handling, `decoder.flush()`.
-- **Known SSE gaps to fix there:** dropped final chunk on `done`, missing `decoder.flush()`,
-  `[DONE]` uses `continue` (`:831-863`).
+- **Known SSE gaps to fix there:** missing `decoder.flush()` after the read loop, plus
+  `[DONE]` handled via `continue` (`:831-863`). Note `done` carries no data payload, so the gap
+  is the uncalled `flush()` (theoretical multi-byte edge case), not a dropped chunk.
 - Make pricing provider-aware: replace the hardcoded constants in `tokenCounter.ts`
   (`05-cost-model.md`) with a provider registry (`pricingStatus`/`costBasis`).
 - `getPromptForPriority` assumes an OpenAI-compatible chat completions shape; adapters needed

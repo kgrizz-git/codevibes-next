@@ -3,7 +3,7 @@
 How CodeVibes turns a GitHub URL into a set of file contents ready for analysis.
 
 ## URL parsing
-- `parseGitHubUrl(url)` (`githubService.ts:17`) matches `github\.com\/([^/]+)\/([^/]+)`.
+- `parseGitHubUrl(url)` (`githubService.ts:17`) uses the module-level `GITHUB_URL_REGEX` (`githubService.ts:12`, referenced at `:18`) matching `github\.com\/([^/]+)\/([^/]+)`.
   - Strips a trailing `.git` (`:27`).
   - Keeps only the first path segment / strips query & fragment (`:32`): `repo.split('/')[0].split('?')[0].split('#')[0]`.
   - Returns `{ owner, repo }` or `null`.
@@ -32,7 +32,7 @@ How CodeVibes turns a GitHub URL into a set of file contents ready for analysis.
 - `getFilesContents(paths, maxFiles=20, onProgress?, token?)` (`:194`):
   - Slices to `maxFiles` (`:203`).
   - **Parallel batches of 5** (`BATCH_SIZE = 5`, `:208`): each batch maps to concurrent
-    `getFileContent` promises, `Promise.all`, then 200ms delay before the next batch (`:212-248`).
+    `getFileContent` promises, `Promise.all`, then a 200ms delay before the next batch (`:246`, inside the `:212-248` batch loop).
   - Per-file failures are logged and skipped — they do **not** abort the batch (`:220-223`).
   - Calls `onProgress(processed, total, path)` per file (`:239-241`).
   - Returns successfully-fetched `FileContent[]` (`:235`).
