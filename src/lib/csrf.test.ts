@@ -53,3 +53,27 @@ describe('withCsrfHeaders', () => {
         expect(init.credentials).toBe('include');
     });
 });
+
+describe('ensureCsrfToken concurrency', () => {
+    it('uses one health fetch for concurrent callers', async () => {
+        let resolveJson!: (value: { csrfToken: string }) => void;
+        const jsonPromise = new Promise<{ csrfToken: string }>((resolve) => {
+            resolveJson = resolve;
+        });
+        const fetchMock = vi.fn().mockReturnValue({
+            ok: true,
+            json: () => jsonPromise,
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const first = ensureCsrfToken('http://localhost:3001');
+        const second = ensureCsrfToken('http://localhost:3001');
+        resolveJson({ csrfToken: 'shared-token' });
+
+        await expect(Promise.all([first, second])).resolves.toEqual([
+            'shared-token',
+            'shared-token',
+        ]);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+});

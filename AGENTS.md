@@ -13,4 +13,4 @@
 
 ## Security
 
-- In local Vite, `/api` is proxied to the backend so CSRF cookies are first-party. Cookie-authenticated mutating calls must send `X-CSRF-Token` matching `csrf_token`. The SPA reads `csrfToken` from `GET /api/health` via `withCsrfHeaders` (cross-origin `document.cookie` cannot see the API cookie). curl without Origin is exempt. Never mint-and-accept a CSRF token on the same unsafe request.
+- Credentialed CORS only reflects origins in `ALLOWED_ORIGINS` (default localhost/127.0.0.1 on 8080/5173/3000). Unlisted origins do not receive `csrfToken` on `/api/health`. In local Vite, `/api` is proxied to the backend so CSRF cookies are first-party. Cookie-authenticated mutating calls must send `X-CSRF-Token` matching `csrf_token` on every POST/PUT/PATCH/DELETE (including curl after `GET /api/health`). The SPA reads `csrfToken` from health via `withCsrfHeaders`. Never mint-and-accept a CSRF token on the same unsafe request.

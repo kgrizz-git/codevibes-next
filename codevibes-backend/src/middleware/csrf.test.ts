@@ -85,14 +85,29 @@ describe('csrfProtection', () => {
         expect(next).toHaveBeenCalledOnce();
     });
 
-    it('allows POST without Origin (curl / non-browser clients)', () => {
-        const req = mockReq({ method: 'POST', cookies: { csrf_token: 'abc' } });
+    it('allows POST without Origin when the CSRF header matches the cookie', () => {
+        const req = mockReq({
+            method: 'POST',
+            cookies: { csrf_token: 'abc' },
+            headers: { 'x-csrf-token': 'abc' },
+        });
         const res = mockRes();
         const next = vi.fn() as NextFunction;
 
         csrfProtection(req, res, next);
 
         expect(next).toHaveBeenCalledOnce();
+    });
+
+    it('rejects POST without Origin when the CSRF header is missing', () => {
+        const req = mockReq({ method: 'POST', cookies: { csrf_token: 'abc' } });
+        const res = mockRes();
+        const next = vi.fn() as NextFunction;
+
+        csrfProtection(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(403);
     });
 
     it('rejects cookieless browser POST without minting a same-request token', () => {

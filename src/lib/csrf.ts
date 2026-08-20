@@ -10,9 +10,11 @@
 const CSRF_COOKIE = 'csrf_token';
 
 let memoryToken: string | null = null;
+let healthFetchPromise: Promise<string> | null = null;
 
 export function resetCsrfTokenCache(): void {
     memoryToken = null;
+    healthFetchPromise = null;
 }
 
 export function rememberCsrfToken(token: string | null | undefined): void {
@@ -34,20 +36,7 @@ export function readCsrfToken(): string | null {
     return null;
 }
 
-/**
- * Return a CSRF token from memory, same-origin cookie, or GET /api/health.
- * Throws if none can be obtained — callers must not send the mutation bare.
- */
-export async function ensureCsrfToken(apiBaseUrl: string): Promise<string> {
-    if (memoryToken) {
-        return memoryToken;
-    }
-    const fromCookie = readCsrfToken();
-    if (fromCookie) {
-        memoryToken = fromCookie;
-        return fromCookie;
-    }
-
+async function fetchCsrfTokenFromHealth(apiBaseUrl: string): Promise<string> {
     let response: Response;
     try {
         response = await fetch(`${apiBaseUrl}/api/health`, { credentials: 'include' });
@@ -75,6 +64,28 @@ export async function ensureCsrfToken(apiBaseUrl: string): Promise<string> {
         return afterCookie;
     }
     throw new Error('Could not obtain a CSRF token');
+}
+
+/**
+ * Return a CSRF token from memory, same-origin cookie, or GET /api/health.
+ * Throws if none can be obtained — callers must not send the mutation bare.
+ */
+export async function ensureCsrfToken(apiBaseUrl: string): Promise<string> {
+    if (memoryToken) {
+        return memoryToken;
+    }
+    const fromCookie = readCsrfToken();
+    if (fromCookie) {
+        memoryToken = fromCookie;
+        return fromCookie;
+    }
+
+    if (!healthFetchPromise) {
+        healthFetchPromise = fetchCsrfTokenFromHealth(apiBaseUrl).finally(() => {
+            healthFetchPromise = null;
+        });
+    }
+    return healthFetchPromise;
 }
 
 export async function withCsrfHeaders(

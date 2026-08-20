@@ -14,7 +14,7 @@ const changelogData = [
             {
                 type: 'fixed',
                 title: 'CSRF protection',
-                description: 'Unsafe browser requests must send X-CSRF-Token matching the csrf_token cookie. GET /api/health returns csrfToken in JSON so the cross-origin SPA can attach the header. curl without Origin is unchanged.',
+                description: 'Unsafe requests must send X-CSRF-Token matching the csrf_token cookie. GET /api/health returns csrfToken in JSON for the SPA; curl must send the header too after priming from health.',
             },
             {
                 type: 'fixed',
@@ -24,7 +24,12 @@ const changelogData = [
             {
                 type: 'fixed',
                 title: 'Encrypted API key storage',
-                description: 'DeepSeek keys are encrypted with Web Crypto before localStorage. Legacy plaintext keys are migrated on read.',
+                description: 'DeepSeek keys are encrypted with Web Crypto before localStorage. The wrapping key is stored in IndexedDB, not beside the ciphertext. Legacy plaintext keys are migrated on read.',
+            },
+            {
+                type: 'fixed',
+                title: 'CORS allowlist',
+                description: 'Credentialed CORS no longer reflects unlisted origins, so sibling ports cannot read csrfToken from GET /api/health.',
             },
         ],
     },

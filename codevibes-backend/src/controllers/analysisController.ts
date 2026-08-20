@@ -7,6 +7,7 @@ import * as analysisService from '../services/analysisService.js';
 import { logger } from '../utils/logger.js';
 import { type AuthenticatedRequest, optionalAuth } from '../utils/auth.js';
 import { APP_VERSION } from '../version.js';
+import { isAllowedOrigin } from '../config/origins.js';
 
 // Re-export optionalAuth for use in routes
 export { optionalAuth };
@@ -150,12 +151,16 @@ export async function validateRepo(req: AuthenticatedRequest, res: Response): Pr
  * GET /api/health
  * Health check endpoint
  */
-export function health(_req: Request, res: Response): void {
+export function health(req: Request, res: Response): void {
+    const origin = req.get('origin');
+    const csrfToken = isAllowedOrigin(origin) && typeof res.locals.csrfToken === 'string'
+        ? res.locals.csrfToken
+        : null;
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
         version: APP_VERSION,
-        // Cross-origin SPAs cannot read the csrf_token cookie; return it here.
-        csrfToken: typeof res.locals.csrfToken === 'string' ? res.locals.csrfToken : null,
+        // Only trusted SPA origins may read the double-submit token.
+        csrfToken,
     });
 }

@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import {
   API_KEY_STORAGE_KEY,
   clearEncryptedSecret,
+  clearLegacyZustandApiKey,
+  peekLegacyZustandApiKey,
   readEncryptedSecret,
-  takeLegacyZustandApiKey,
   writeEncryptedSecret,
 } from '@/lib/secretStorage';
 
@@ -40,7 +41,8 @@ export interface RepoInfo {
 
 export interface AnalysisState {
   apiKey: string | null;
-  setApiKey: (key: string | null) => void;
+  apiKeyHydrated: boolean;
+  setApiKey: (key: string | null) => Promise<void>;
   repoUrl: string;
   setRepoUrl: (url: string) => void;
   repoInfo: RepoInfo | null;
@@ -79,9 +81,11 @@ const initialPriorities: PriorityLevel[] = [
 
 export const useAnalysisStore = create<AnalysisState>()((set) => ({
       apiKey: null,
-      setApiKey: (key) => {
+      apiKeyHydrated: false,
+      setApiKey: async (key) => {
         if (key) {
-          void writeEncryptedSecret(API_KEY_STORAGE_KEY, key);
+          await writeEncryptedSecret(API_KEY_STORAGE_KEY, key);
+          clearLegacyZustandApiKey();
         } else {
           clearEncryptedSecret(API_KEY_STORAGE_KEY);
         }
@@ -126,13 +130,19 @@ export const useAnalysisStore = create<AnalysisState>()((set) => ({
  * Load an encrypted (or legacy plaintext) API key into memory once at startup.
  */
 export async function hydrateStoredApiKey(): Promise<void> {
-  const stored = await readEncryptedSecret(API_KEY_STORAGE_KEY);
-  if (stored) {
-    useAnalysisStore.setState({ apiKey: stored });
-    return;
-  }
-  const legacy = takeLegacyZustandApiKey();
-  if (legacy) {
-    useAnalysisStore.getState().setApiKey(legacy);
+  try {
+    const stored = await readEncryptedSecret(API_KEY_STORAGE_KEY);
+    if (stored) {
+      useAnalysisStore.setState({ apiKey: stored });
+      return;
+    }
+    const legacy = peekLegacyZustandApiKey();
+    if (legacy) {
+      await useAnalysisStore.getState().setApiKey(legacy);
+    }
+  } catch {
+    // Storage blocked or corrupt — leave apiKey null; UI can prompt again.
+  } finally {
+    useAnalysisStore.setState({ apiKeyHydrated: true });
   }
 }

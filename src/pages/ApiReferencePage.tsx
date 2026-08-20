@@ -111,7 +111,8 @@ export default function ApiReferencePage() {
                             <code className="mx-1 font-mono text-xs">csrfToken</code> from
                             <code className="mx-1 font-mono text-xs">GET /api/health</code> instead of
                             <code className="mx-1 font-mono text-xs">document.cookie</code>.
-                            curl and other non-browser clients (no Origin header) are not required to send it.
+                            All mutating requests, including curl, must send
+                            <code className="mx-1 font-mono text-xs">X-CSRF-Token</code> matching the cookie after priming from health.
                         </p>
                     </section>
 

@@ -14,6 +14,7 @@ import { standardLimiter } from './middleware/rateLimiter.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { logger } from './utils/logger.js';
 import { APP_VERSION } from './version.js';
+import { ALLOWED_ORIGINS, isAllowedOrigin } from './config/origins.js';
 
 // Initialize database (creates tables if not exist)
 import './utils/database.js';
@@ -21,9 +22,6 @@ import './utils/database.js';
 // -------------------- Configuration --------------------
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://localhost:8080')
-    .split(',')
-    .map(origin => origin.trim());
 
 // -------------------- App Setup --------------------
 
@@ -43,11 +41,11 @@ app.use(cors({
             return;
         }
 
-        if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes('*')) {
+        if (isAllowedOrigin(origin)) {
             callback(null, true);
         } else {
             logger.warn('CORS blocked origin', { origin });
-            callback(null, true); // Allow for development - tighten in production
+            callback(null, false);
         }
     },
     credentials: true,

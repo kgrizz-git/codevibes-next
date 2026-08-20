@@ -7,7 +7,8 @@
 // a cross-origin SPA cannot read a :3001 cookie from document.cookie
 // on :8080. Unsafe browser requests must present a header that
 // matches a cookie that already exists — never a token minted on
-// the same POST. Clients without Origin (curl) skip the check.
+// the same POST. All unsafe requests must send X-CSRF-Token matching
+// the csrf_token cookie (curl: GET /api/health first).
 // ============================================================
 
 import { randomBytes } from 'node:crypto';
@@ -45,12 +46,6 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
             res.cookie(CSRF_COOKIE, token, cookieOptions());
         }
         res.locals.csrfToken = token;
-        next();
-        return;
-    }
-
-    const origin = req.get('origin');
-    if (!origin) {
         next();
         return;
     }

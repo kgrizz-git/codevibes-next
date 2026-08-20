@@ -43,8 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     useEffect(() => {
-        void hydrateStoredApiKey();
-        refreshUser().finally(() => setIsLoading(false));
+        void Promise.all([hydrateStoredApiKey(), refreshUser()]).finally(() => setIsLoading(false));
     }, []);
 
     // Check for login success query param
