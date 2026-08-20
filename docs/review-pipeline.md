@@ -6,8 +6,9 @@
 > prompt tuning, and **broader language & pattern coverage with selectable effort/detail
 > layers** (`plans/TO_DO.md` item 5, sequenced to run immediately after this doc).
 >
-> **Scope:** Documentation only. No code changes. `deepseekService.ts` stays byte-for-byte
-> intact (legacy-provider constraint, TO_DO item 6 / provider plan Step 1).
+> `deepseekService.ts` stays byte-for-byte intact (legacy-provider constraint, TO_DO item 6 /
+> provider plan Step 1). The selectable effort layer changes review scope only until provider
+> routing owns effort-specific prompts and output limits.
 >
 > **Verified against source on 2026-08-20** (file:line references are checkable).
 
@@ -23,7 +24,7 @@ RepoInfo  ── validateRepo
 File[]  ── fileFilter.categorizeFiles  (ignore + P1/P2/P3 first-match-wins)
    │
    ▼  githubService.getFilesForPriority + getFilesContents
-FileContent[]  (parallel batches of 5, maxFiles = MAX_FILES_PER_PRIORITY, default 20)
+FileContent[]  (parallel batches of 5, effort cap = min(layer cap, MAX_FILES_PER_PRIORITY))
    │
    ▼  analysisService.analyzeRepository
    │     └─ deepseekService.streamAnalysis  (SSE to DeepSeek, temperature 0.3, max_tokens 8000)
@@ -47,16 +48,16 @@ SSE events → AnalyzePage:  status · file · issue · complete · error
 
 | Concern | Value / Location |
 |---|---|
-| File cap per priority | `MAX_FILES_PER_PRIORITY` = `process.env.MAX_FILES_PER_PRIORITY \|\| 20` (`analysisService.ts:23`) |
+| Review effort | quick/standard/thorough scope caps: 5/20/40; each is bounded by `MAX_FILES_PER_PRIORITY` (default 40) (`config/effort.ts`) |
 | Parallel fetch | batches of 5, 200ms gap between batches (`githubService.ts:208,246`) |
 | Tree cache | in-memory, 5 min TTL (`githubService.ts:82-83`) |
-| Priority model | ignore → P1 (security) → P2 (business) → P3 (supporting), first match wins (`fileFilter.ts:244`) |
-| Matcher | `minimatch` with `{ dot: true, matchBase: true }` (`fileFilter.ts:229`) |
+| Priority model | ignore → P1 (security) → P2 (business) → P3 (supporting), first match wins (`fileFilter.ts`) |
+| Matcher | `minimatch` with `{ dot: true, matchBase: true }`; P1/P2 conventions are source-gated (`fileFilter.ts`) |
 | Agent model | `process.env.DEEPSEEK_MODEL \|\| 'deepseek-chat'` (`deepseekService.ts:17`) |
 | Generation params | `temperature: 0.3`, `max_tokens: 8000` (`temperature` at `deepseekService.ts:728,804`, `max_tokens` at `:729,805`) |
 | Output contract | JSON only, no markdown; issue schema `{severity, category, file, line, title, description, impact, fix, codeExample}` |
 | Cost estimate | `ceil(len/4)` tokens; DeepSeek `deepseek-chat` pricing `0.14` in / `0.28` out per 1M (`tokenCounter.ts:7,10-11`) |
-| Token budget for estimate | `AVG_TOKENS_PER_FILE = 500`, `OUTPUT_RATIO = 0.2` (`analysisService.ts:257-258`) |
+| Token budget for estimate | `AVG_TOKENS_PER_FILE = 500`, `OUTPUT_RATIO = 0.2` (`analysisService.ts`) |
 
 ## Known gaps (captured so downstream plans can fix them)
 

@@ -26,23 +26,26 @@ function requireMatch(text, pattern, label) {
 
 const fileFilter = source("codevibes-backend/src/utils/fileFilter.ts");
 const analysis = source("codevibes-backend/src/services/analysisService.ts");
+const effortConfig = source("codevibes-backend/src/config/effort.ts");
 const github = source("codevibes-backend/src/services/githubService.ts");
 const deepseek = source("codevibes-backend/src/services/deepseekService.ts");
 const tokens = source("codevibes-backend/src/utils/tokenCounter.ts");
 
-const priority3 = requireMatch(
+const sourceExtensions = requireMatch(
   fileFilter,
-  /const PRIORITY_3_PATTERNS = \[([\s\S]*?)\n\];/,
-  "Priority 3 patterns",
+  /const SOURCE_EXTENSIONS = new Set\(\[([\s\S]*?)\n\]\);/,
+  "recognized source extensions",
 );
-const extensions = [...priority3.matchAll(/'\*\*\/\*\.([a-z0-9]+)'/gi)].map((match) => match[1]);
+const extensions = [...sourceExtensions.matchAll(/'([a-z0-9]+)'/gi)].map((match) => match[1]);
 const events = [...analysis.matchAll(/type:\s*'([a-z]+)'/g)].map((match) => match[1]);
 
 const maxFiles = requireMatch(
-  analysis,
-  /MAX_FILES_PER_PRIORITY\s*=\s*parseInt\(process\.env\.MAX_FILES_PER_PRIORITY\s*\|\|\s*'([^']+)'/,
+  effortConfig,
+  /parsePositiveWholeNumber\('MAX_FILES_PER_PRIORITY', env\.MAX_FILES_PER_PRIORITY, (\d+)\)/,
   "MAX_FILES_PER_PRIORITY default",
 );
+const effortCaps = [...effortConfig.matchAll(/parsePositiveWholeNumber\('EFFORT_([A-Z]+)_MAX_FILES', env\.EFFORT_[A-Z]+_MAX_FILES, (\d+)\)/g)]
+  .map((match) => `${match[1].toLowerCase()}=${match[2]}`);
 const avgTokens = requireMatch(analysis, /AVG_TOKENS_PER_FILE\s*=\s*(\d+)/, "AVG_TOKENS_PER_FILE");
 const outputRatio = requireMatch(analysis, /OUTPUT_RATIO\s*=\s*([\d.]+)/, "OUTPUT_RATIO");
 const cacheTtlMinutes = requireMatch(github, /CACHE_TTL\s*=\s*(\d+)\s*\*\s*60\s*\*\s*1000/, "cache TTL");
@@ -67,14 +70,15 @@ const content = `# Generated Review-Pipeline Contract
 
 | Fact | Source value |
 |---|---|
-| Recognized P3 source extensions | \`${extensions.join(" ")}\` |
+| Recognized source extensions | \`${extensions.join(" ")}\` |
 | Priority order | ignore → P1 → P2 → P3 (first match wins) |
 
 ## Discovery and analysis
 
 | Fact | Source value |
 |---|---|
-| Default files per priority | \`${maxFiles}\` (\`MAX_FILES_PER_PRIORITY\`) |
+| Global files-per-priority safety cap | \`${maxFiles}\` (\`MAX_FILES_PER_PRIORITY\`) |
+| Effort-layer file caps | \`${effortCaps.join(", ")}\` (each is constrained by the global cap) |
 | Tree-cache TTL | \`${cacheTtlMinutes}\` minutes |
 | Content-fetch batch size | \`${batchSize}\` |
 | Gap between batches | \`${batchDelay}\` ms |

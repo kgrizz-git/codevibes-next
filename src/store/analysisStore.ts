@@ -59,6 +59,8 @@ export interface AnalysisState {
   totalTokensUsed: number;
   setTotalTokensUsed: (count: number) => void;
   addTokensUsed: (amount: number) => void;
+  totalCost: number;
+  setTotalCost: (cost: number) => void;
   filesScanned: number;
   setFilesScanned: (count: number) => void;
   incrementFilesScanned: () => void;
@@ -130,6 +132,8 @@ export const useAnalysisStore = create<AnalysisState>()((set) => ({
       totalTokensUsed: 0,
       setTotalTokensUsed: (count) => set({ totalTokensUsed: count }),
       addTokensUsed: (amount) => set((state) => ({ totalTokensUsed: state.totalTokensUsed + amount })),
+      totalCost: 0,
+      setTotalCost: (cost) => set({ totalCost: cost }),
       filesScanned: 0,
       setFilesScanned: (count) => set({ filesScanned: count }),
       incrementFilesScanned: () => set((state) => ({ filesScanned: state.filesScanned + 1 })),
@@ -143,7 +147,7 @@ export const useAnalysisStore = create<AnalysisState>()((set) => ({
       setAwaitingApproval: (level) => set({ awaitingApproval: level }),
       resetAnalysis: () => set({
         isAnalyzing: false, currentPriority: null, priorities: initialPriorities, vibeScore: 0,
-        totalTokensUsed: 0, filesScanned: 0, elapsedTime: 0, streamingContent: '', awaitingApproval: null, repoInfo: null,
+        totalTokensUsed: 0, totalCost: 0, filesScanned: 0, elapsedTime: 0, streamingContent: '', awaitingApproval: null, repoInfo: null,
       }),
 }));
 

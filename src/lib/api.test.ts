@@ -196,6 +196,17 @@ describe('validateRepo / getEstimate error paths', () => {
         respondWith({ ok: false, json: async () => ({ error: 'rate limited' }) });
         await expect(getEstimate('https://github.com/o/r')).rejects.toThrow('rate limited');
     });
+
+    it('serializes the selected effort in estimate requests', async () => {
+        let requestedUrl = '';
+        fetchOverride = (url) => {
+            requestedUrl = String(url);
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        };
+
+        await getEstimate('https://github.com/o/r', 'thorough');
+        expect(requestedUrl).toContain('effort=thorough');
+    });
 });
 
 describe('checkHealth remembers the csrf token', () => {
@@ -247,6 +258,7 @@ describe('saveAnalysis', () => {
         cost: 0,
         filesScanned: 1,
         durationMs: 1000,
+        effort: 'standard' as const,
         issues: [],
     };
 

@@ -56,7 +56,7 @@ export function HistoryList({ onSelect }: HistoryListProps) {
                 >
                     <div className="text-sm font-medium truncate">{entry.repo_name}</div>
                     <div className="text-xs text-muted-foreground">
-                        {entry.issues_count} issues • Score: {entry.vibe_score}
+                        {entry.issues_count} issues • Score: {entry.vibe_score} • {entry.effort ?? 'Legacy'} effort
                     </div>
                 </button>
             ))}

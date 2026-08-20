@@ -8,10 +8,12 @@ export interface AnalyzeRequest {
     repoUrl: string;
     apiKey: string;
     priority: 1 | 2 | 3;
+    effort?: EffortLevel;
 }
 
 export interface EstimateRequest {
     repoUrl: string;
+    effort?: EffortLevel;
 }
 
 export interface ValidateRepoRequest {
@@ -50,6 +52,7 @@ export interface FileContent {
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type IssueCategory = 'security' | 'bug' | 'performance' | 'quality';
 export type PriorityLevel = 1 | 2 | 3;
+export type EffortLevel = 'quick' | 'standard' | 'thorough';
 
 export interface AnalysisIssue {
     id: string;
@@ -72,6 +75,8 @@ export interface PriorityEstimate {
 
 export interface AnalysisEstimate {
     repoInfo: RepoInfo;
+    effort: EffortLevel;
+    maxFilesPerPriority: number;
     priority1: PriorityEstimate;
     priority2: PriorityEstimate;
     priority3: PriorityEstimate;
@@ -101,6 +106,7 @@ export type IssueEventData = AnalysisIssue;
 
 export interface CompleteEventData {
     priority: PriorityLevel;
+    effort: EffortLevel;
     filesScanned: number;
     issuesFound: number;
     tokensUsed: number;

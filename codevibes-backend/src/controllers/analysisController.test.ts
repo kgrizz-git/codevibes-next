@@ -139,6 +139,8 @@ describe('analyze request schema', () => {
             'https://github.com/o/r',
             'sk-test',
             priority,
+            'standard',
+            20,
             undefined,
         );
     });
@@ -156,6 +158,44 @@ describe('analyze request schema', () => {
             'https://github.com/o/r',
             'sk-test',
             2,
+            'standard',
+            20,
+            undefined,
+        );
+    });
+
+    it.each([null, '', 'fast', ['quick'], { effort: 'quick' }, 1])('rejects invalid effort %p before opening SSE', async (effort) => {
+        const res = mockRes();
+        await analyze(
+            mockReq({ body: { repoUrl: 'https://github.com/o/r', apiKey: 'sk-test', priority: 1, effort } }),
+            res,
+        );
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({ error: 'effort must be quick, standard, or thorough' });
+        expect(res.flushHeaders).not.toHaveBeenCalled();
+        expect(analyzeRepositoryMock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['quick', 5],
+        ['standard', 20],
+        ['thorough', 40],
+    ] as const)('forwards %s effort and its resolved %i-file cap', async (effort, maxFilesPerPriority) => {
+        analyzeRepositoryMock.mockResolvedValue(undefined);
+        const res = mockRes();
+        await analyze(
+            mockReq({ body: { repoUrl: 'https://github.com/o/r', apiKey: 'sk-test', priority: 1, effort } }),
+            res,
+        );
+
+        expect(analyzeRepositoryMock).toHaveBeenCalledWith(
+            res,
+            'https://github.com/o/r',
+            'sk-test',
+            1,
+            effort,
+            maxFilesPerPriority,
             undefined,
         );
     });
@@ -189,6 +229,8 @@ describe('analyze SSE framing', () => {
             validBody.repoUrl,
             validBody.apiKey,
             1,
+            'standard',
+            20,
             'gho_secret',
         );
     });
@@ -254,6 +296,26 @@ describe('estimate error mapping', () => {
         expect(res.statusCode).toBe(400);
         expect(res.body).toEqual({ error: 'repoUrl query parameter is required' });
         expect(getEstimateMock).not.toHaveBeenCalled();
+    });
+
+    it.each([null, '', 'fast', ['quick'], { effort: 'quick' }, 1])('rejects invalid effort query value %p', async (effort) => {
+        const res = mockRes();
+        await estimate(mockReq({ query: { repoUrl: 'https://github.com/o/r', effort } as never }), res);
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({ error: 'effort must be quick, standard, or thorough' });
+        expect(getEstimateMock).not.toHaveBeenCalled();
+    });
+
+    it('defaults omitted effort and forwards an explicitly selected effort exactly once', async () => {
+        getEstimateMock.mockResolvedValue({ totalFiles: 3 } as never);
+        const defaultRes = mockRes();
+        await estimate(mockReq({ query: { repoUrl: 'https://github.com/o/r' } }), defaultRes);
+        expect(getEstimateMock).toHaveBeenLastCalledWith('https://github.com/o/r', 'standard', undefined);
+
+        const selectedRes = mockRes();
+        await estimate(mockReq({ query: { repoUrl: 'https://github.com/o/r', effort: 'quick' } }), selectedRes);
+        expect(getEstimateMock).toHaveBeenLastCalledWith('https://github.com/o/r', 'quick', undefined);
     });
 
     it('maps "not found" failures to 404', async () => {

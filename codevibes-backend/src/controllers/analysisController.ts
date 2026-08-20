@@ -8,16 +8,23 @@ import { logger } from '../utils/logger.js';
 import { type AuthenticatedRequest, optionalAuth } from '../utils/auth.js';
 import { APP_VERSION } from '../version.js';
 import { isAllowedOrigin } from '../config/origins.js';
+import { isEffortLevel, resolveMaxFilesPerPriority } from '../config/effort.js';
+import type { EffortLevel } from '../types/index.js';
 
 // Re-export optionalAuth for use in routes
 export { optionalAuth };
+
+function getRequestedEffort(value: unknown): EffortLevel | null {
+    if (value === undefined) return 'standard';
+    return isEffortLevel(value) ? value : null;
+}
 
 /**
  * POST /api/analyze
  * Run AI analysis on a GitHub repository with SSE streaming
  */
 export async function analyze(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const { repoUrl, apiKey, priority } = req.body;
+    const { repoUrl, apiKey, priority, effort: requestedEffort } = req.body;
 
     // Validate required fields
     if (!repoUrl || typeof repoUrl !== 'string') {
@@ -35,6 +42,14 @@ export async function analyze(req: AuthenticatedRequest, res: Response): Promise
         res.status(400).json({ error: 'priority must be 1, 2, or 3' });
         return;
     }
+
+    const effort = getRequestedEffort(requestedEffort);
+    if (!effort) {
+        res.status(400).json({ error: 'effort must be quick, standard, or thorough' });
+        return;
+    }
+
+    const maxFilesPerPriority = resolveMaxFilesPerPriority(effort);
 
     // Get user's GitHub token if authenticated
     const githubToken = req.user?.github_token;
@@ -59,13 +74,15 @@ export async function analyze(req: AuthenticatedRequest, res: Response): Promise
     }, 15000); // Every 15 seconds
 
     try {
-        logger.request('POST', '/api/analyze', { repoUrl, priority: priorityLevel, hasToken: !!githubToken });
+        logger.request('POST', '/api/analyze', { repoUrl, priority: priorityLevel, effort, maxFilesPerPriority, hasToken: !!githubToken });
 
         await analysisService.analyzeRepository(
             res,
             repoUrl,
             apiKey,
             priorityLevel as 1 | 2 | 3,
+            effort,
+            maxFilesPerPriority,
             githubToken ?? undefined  // Pass user's GitHub token for private repos
         );
     } catch (error: any) {
@@ -89,18 +106,24 @@ export async function analyze(req: AuthenticatedRequest, res: Response): Promise
  * Get cost estimate for analyzing a repository
  */
 export async function estimate(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const repoUrl = req.query.repoUrl as string;
+    const repoUrl = req.query.repoUrl;
     const githubToken = req.user?.github_token;
 
-    if (!repoUrl) {
+    if (typeof repoUrl !== 'string' || !repoUrl) {
         res.status(400).json({ error: 'repoUrl query parameter is required' });
         return;
     }
 
-    try {
-        logger.request('GET', '/api/estimate', { repoUrl, hasToken: !!githubToken });
+    const effort = getRequestedEffort(req.query.effort);
+    if (!effort) {
+        res.status(400).json({ error: 'effort must be quick, standard, or thorough' });
+        return;
+    }
 
-        const estimateResult = await analysisService.getEstimate(repoUrl, githubToken ?? undefined);
+    try {
+        logger.request('GET', '/api/estimate', { repoUrl, effort, hasToken: !!githubToken });
+
+        const estimateResult = await analysisService.getEstimate(repoUrl, effort, githubToken ?? undefined);
         res.json(estimateResult);
     } catch (error: any) {
         logger.error('Estimate endpoint error', { error: error.message });

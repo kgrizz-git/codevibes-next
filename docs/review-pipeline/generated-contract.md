@@ -9,14 +9,15 @@
 
 | Fact | Source value |
 |---|---|
-| Recognized P3 source extensions | `css scss less js ts jsx tsx py java go rb php rs` |
+| Recognized source extensions | `js ts jsx tsx py java go rb php rs kt kts cs c h cc cpp cxx hpp m mm swift scala sc ex exs dart lua r pl pm sh bash zsh ps1 fs fsx vb groovy clj cljs hs erl hrl zig sol` |
 | Priority order | ignore → P1 → P2 → P3 (first match wins) |
 
 ## Discovery and analysis
 
 | Fact | Source value |
 |---|---|
-| Default files per priority | `20` (`MAX_FILES_PER_PRIORITY`) |
+| Global files-per-priority safety cap | `40` (`MAX_FILES_PER_PRIORITY`) |
+| Effort-layer file caps | `quick=5, standard=20, thorough=40` (each is constrained by the global cap) |
 | Tree-cache TTL | `5` minutes |
 | Content-fetch batch size | `5` |
 | Gap between batches | `200` ms |

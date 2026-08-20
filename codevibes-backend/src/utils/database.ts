@@ -46,6 +46,7 @@ db.exec(`
         repo_name TEXT NOT NULL,
         repo_full_name TEXT,
         priority INTEGER,
+        effort TEXT,
         issues_count INTEGER DEFAULT 0,
         vibe_score INTEGER DEFAULT 100,
         tokens_used INTEGER DEFAULT 0,
@@ -68,6 +69,12 @@ try {
 
 try {
     db.exec('ALTER TABLE analyses ADD COLUMN duration_ms INTEGER DEFAULT 0');
+} catch { /* Column likely exists */ }
+
+// Nullable intentionally distinguishes existing, pre-effort rows from analyses
+// saved after effort became part of the public contract.
+try {
+    db.exec('ALTER TABLE analyses ADD COLUMN effort TEXT');
 } catch { /* Column likely exists */ }
 
 
@@ -183,6 +190,7 @@ export interface Analysis {
     repo_name: string;
     repo_full_name?: string;
     priority?: number;
+    effort?: 'quick' | 'standard' | 'thorough' | null;
     issues_count: number;
     vibe_score: number;
     tokens_used: number;
@@ -195,8 +203,8 @@ export interface Analysis {
 
 export function createAnalysis(analysis: Omit<Analysis, 'created_at'>): Analysis {
     const stmt = db.prepare(`
-        INSERT INTO analyses (id, user_id, repo_url, repo_name, repo_full_name, priority, issues_count, vibe_score, tokens_used, cost, issues_json, files_scanned, duration_ms)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO analyses (id, user_id, repo_url, repo_name, repo_full_name, priority, effort, issues_count, vibe_score, tokens_used, cost, issues_json, files_scanned, duration_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
         analysis.id,
@@ -205,6 +213,7 @@ export function createAnalysis(analysis: Omit<Analysis, 'created_at'>): Analysis
         analysis.repo_name,
         analysis.repo_full_name,
         analysis.priority,
+        analysis.effort,
         analysis.issues_count,
         analysis.vibe_score,
         analysis.tokens_used,

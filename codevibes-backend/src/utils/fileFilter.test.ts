@@ -60,6 +60,76 @@ describe('getFilePriority contracts', () => {
     });
 });
 
+describe('broader language coverage and conventions', () => {
+    it.each([
+        'kt', 'kts', 'cs', 'c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'm', 'mm',
+        'swift', 'scala', 'sc', 'ex', 'exs', 'dart', 'lua', 'r', 'pl', 'pm',
+        'sh', 'bash', 'zsh', 'ps1', 'fs', 'fsx', 'vb', 'groovy', 'clj', 'cljs',
+        'hs', 'erl', 'hrl', 'zig', 'sol',
+    ])('admits .%s files as supporting source code', (extension) => {
+        expect(getFilePriority(`src/support/example.${extension}`)).toBe(3);
+    });
+
+    it('prioritizes supported security, environment, and Terraform inputs', () => {
+        expect(getFilePriority('.envrc')).toBe(1);
+        expect(getFilePriority('src/oauth/client.swift')).toBe(1);
+        expect(getFilePriority('src/auth/verify-jwt.kt')).toBe(1);
+        expect(getFilePriority('infrastructure/main.tf')).toBe(1);
+        expect(getFilePriority('infrastructure/secrets.tfvars')).toBe(1);
+    });
+
+    it('keeps Terraform caches ignored before Terraform P1 rules', () => {
+        expect(shouldIgnoreFile('.terraform/providers/registry.terraform.io/provider')).toBe(true);
+        expect(getFilePriority('.terraform/providers/registry.terraform.io/provider')).toBeNull();
+        expect(getFilePriority('modules/network/.terraform/modules/cache.tf')).toBeNull();
+    });
+
+    it('does not select environment examples or templates', () => {
+        expect(getFilePriority('.env.example')).toBeNull();
+        expect(getFilePriority('.env.template')).toBeNull();
+        expect(getFilePriority('.env.sample')).toBeNull();
+    });
+
+    it('prioritizes reviewed framework, Go, and Rust conventions', () => {
+        expect(getFilePriority('src/graphql/schema.ts')).toBe(2);
+        expect(getFilePriority('src/resolvers/user.swift')).toBe(2);
+        expect(getFilePriority('src/mutations/update.kt')).toBe(2);
+        expect(getFilePriority('src/workers/queue.go')).toBe(2);
+        expect(getFilePriority('src/jobs/nightly.rs')).toBe(2);
+        expect(getFilePriority('src/tasks/refresh.py')).toBe(2);
+        expect(getFilePriority('src/queries/users.ts')).toBe(1);
+
+        expect(getFilePriority('cmd/cli/root.go')).toBe(2);
+        expect(getFilePriority('internal/http/server.go')).toBe(2);
+        expect(getFilePriority('pkg/client/client.go')).toBe(2);
+        expect(getFilePriority('src/handlers/users.go')).toBe(2);
+        expect(getFilePriority('main.go')).toBe(2);
+        expect(getFilePriority('tools/main.go')).toBe(2);
+
+        expect(getFilePriority('Cargo.toml')).toBe(2);
+        expect(getFilePriority('src/main.rs')).toBe(2);
+        expect(getFilePriority('src/lib.rs')).toBe(2);
+        expect(getFilePriority('crates/worker/src/main.rs')).toBe(2);
+        expect(getFilePriority('crates/api/src/lib.rs')).toBe(2);
+        expect(getFilePriority('src/bin/worker.rs')).toBe(2);
+    });
+
+    it('does not treat every src path as core business logic', () => {
+        expect(getFilePriority('src/backend/foo.py')).toBe(3);
+    });
+
+    it('source-gates textual and directory P1/P2 conventions', () => {
+        expect(getFilePriority('notes/main.md')).toBe(3);
+        expect(getFilePriority('artifacts/model.bin')).toBeNull();
+        expect(getFilePriority('drafts/route.custom')).toBeNull();
+        expect(getFilePriority('scratch/test.adoc')).toBeNull();
+        expect(getFilePriority('docs/handlers/readme.md')).toBe(3);
+        expect(getFilePriority('docs/security/guide.md')).toBe(3);
+        expect(getFilePriority('src/security/diagram.png')).toBeNull();
+        expect(getFilePriority('src/auth/generated.d.ts')).toBeNull();
+    });
+});
+
 describe('filterFilesByPriority', () => {
     const files = [
         'src/auth/login.ts',
