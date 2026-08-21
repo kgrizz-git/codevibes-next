@@ -90,6 +90,22 @@ describe('useEffortEstimate', () => {
     expect(getEstimateMock).toHaveBeenCalledTimes(1);
   });
 
+  it('ignores a successful response after unmount', async () => {
+    let resolveEstimate: (value: api.AnalysisEstimate) => void = () => {};
+    vi.spyOn(api, 'getEstimate').mockImplementation(
+      () => new Promise<api.AnalysisEstimate>((resolve) => { resolveEstimate = resolve; }),
+    );
+    const { updatePriority, calls } = makeUpdatePriority();
+    const { result, unmount } = renderHook(() => useEffortEstimate(updatePriority));
+
+    const loadPromise = result.current.load('https://github.com/owner/repo', 'quick');
+    unmount();
+
+    resolveEstimate(sampleEstimate('quick'));
+    await expect(loadPromise).resolves.toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
   it('ignores an error from a superseded request', async () => {
     let rejectEstimate: (reason: Error) => void = () => {};
     const getEstimateMock = vi.spyOn(api, 'getEstimate').mockImplementation(

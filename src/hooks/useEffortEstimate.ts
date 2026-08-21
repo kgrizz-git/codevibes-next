@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as api from '@/lib/api';
 
 type UpdatePriority = (level: 1 | 2 | 3, updates: { files: string[]; status: 'pending' }) => void;
@@ -10,6 +10,10 @@ function placeholderFiles(prefix: string, count: number): string[] {
 export function useEffortEstimate(updatePriority: UpdatePriority) {
   const requestRef = useRef(0);
   const [maxFilesPerPriority, setMaxFilesPerPriority] = useState<number | null>(null);
+
+  useEffect(() => () => {
+    requestRef.current += 1;
+  }, []);
 
   const invalidate = () => {
     requestRef.current += 1;

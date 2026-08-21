@@ -35,7 +35,6 @@ async function validateAndEstimateRepo(
   name: string,
   effort: api.EffortLevel,
   setStatusMessage: (message: string) => void,
-  setRepoInfo: (info: RepoInfo) => void,
   loadEstimate: (repoUrl: string, selectedEffort: api.EffortLevel) => Promise<api.AnalysisEstimate | null>,
 ): Promise<RepoInfo | null> {
   try {
@@ -47,7 +46,6 @@ async function validateAndEstimateRepo(
     }
 
     const repoInfo = { owner, name, fullName: result.fullName, stars: result.stars, lastUpdate: result.lastUpdate, defaultBranch: result.defaultBranch };
-    setRepoInfo(repoInfo);
     setStatusMessage('Estimating analysis...');
     return (await loadEstimate(`https://github.com/${owner}/${name}`, effort)) !== null ? repoInfo : null;
   } catch (error: unknown) {
@@ -86,6 +84,7 @@ export default function AnalyzePage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const elapsedTimeRef = useRef(0);
   const analysisRef = useRef<{ abort: () => void } | null>(null);
+  const analysisGenerationRef = useRef(0);
   const sessionEffortRef = useRef<api.EffortLevel>('standard');
   const sessionRepoInfoRef = useRef<RepoInfo | null>(null);
   const sessionTotalsRef = useRef({ tokensUsed: 0, cost: 0, filesScanned: 0 });
@@ -139,6 +138,7 @@ export default function AnalyzePage() {
     }
 
     const selectedEffort = effort;
+    const analysisGeneration = ++analysisGenerationRef.current;
     setRepoUrl(inputUrl);
     resetAnalysis();
     setIsAnalyzing(true);
@@ -150,15 +150,17 @@ export default function AnalyzePage() {
     elapsedTimeRef.current = 0;
     invalidateEstimate();
 
-    const validatedRepoInfo = await validateAndEstimateRepo(parsed.owner, parsed.name, sessionEffortRef.current, setStatusMessage, setRepoInfo, loadEstimate);
+    const validatedRepoInfo = await validateAndEstimateRepo(parsed.owner, parsed.name, sessionEffortRef.current, setStatusMessage, loadEstimate);
+    if (analysisGeneration !== analysisGenerationRef.current) return;
     if (!validatedRepoInfo) { setIsAnalyzing(false); setStatusMessage(''); return; }
+    setRepoInfo(validatedRepoInfo);
     sessionRepoInfoRef.current = validatedRepoInfo;
 
     timerRef.current = setInterval(() => {
       elapsedTimeRef.current += 1;
       incrementElapsedTime();
     }, 1000);
-    startPriorityScan(1);
+    startPriorityScan(1, analysisGeneration);
   };
 
   const handleEffortChange = (nextEffort: api.EffortLevel) => {
@@ -171,7 +173,7 @@ export default function AnalyzePage() {
     login();
   };
 
-  const startPriorityScan = async (level: 1 | 2 | 3) => {
+  const startPriorityScan = async (level: 1 | 2 | 3, analysisGeneration = analysisGenerationRef.current) => {
     setIsAnalyzing(true);
     setCurrentPriority(level);
     updatePriority(level, { status: 'scanning', issues: [] });
@@ -180,13 +182,15 @@ export default function AnalyzePage() {
     const priorityIssues: AnalysisIssue[] = [];
     const fetchedPaths: string[] = [];
     let scanComplete = false;
+    let scanCancelled = false;
 
-    analysisRef.current = api.analyzeRepository(
+    const activeAnalysis = api.analyzeRepository(
       inputUrl,
       apiKey!,
       level,
       {
         onStatus: (data) => {
+          if (scanCancelled || analysisGeneration !== analysisGenerationRef.current) return;
           setStatusMessage(data.message);
           if (data.filesScanned > 0) {
             setFilesScanned(sessionTotalsRef.current.filesScanned + data.filesScanned);
@@ -197,11 +201,13 @@ export default function AnalyzePage() {
           }
         },
         onIssue: (issue) => {
+          if (scanCancelled || analysisGeneration !== analysisGenerationRef.current) return;
           const storeIssue = toStoreIssue(issue);
           priorityIssues.push(storeIssue);
           updatePriority(level, { issues: [...priorityIssues] });
         },
         onComplete: (data) => {
+          if (scanCancelled || analysisGeneration !== analysisGenerationRef.current) return;
           scanComplete = true;
           sessionTotalsRef.current.tokensUsed += data.tokensUsed;
           sessionTotalsRef.current.cost += data.cost;
@@ -234,6 +240,7 @@ export default function AnalyzePage() {
           }
         },
         onError: (error) => {
+          if (scanCancelled || analysisGeneration !== analysisGenerationRef.current) return;
           console.error('Analysis error:', error);
           toast.error(error.message || 'Analysis failed');
 
@@ -253,6 +260,12 @@ export default function AnalyzePage() {
       },
       sessionEffortRef.current,
     );
+    analysisRef.current = {
+      abort: () => {
+        scanCancelled = true;
+        activeAnalysis.abort();
+      },
+    };
   };
 
   const handleApproval = (approved: boolean) => {
@@ -275,6 +288,10 @@ export default function AnalyzePage() {
   };
 
   const loadHistory = (entry: api.HistoryEntry) => {
+    analysisGenerationRef.current += 1;
+    analysisRef.current?.abort();
+    analysisRef.current = null;
+    invalidateEstimate();
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;

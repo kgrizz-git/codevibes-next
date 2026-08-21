@@ -17,10 +17,31 @@ vi.mock('@/lib/api', () => ({
   saveAnalysis: vi.fn(),
 }));
 
+vi.mock('@/components/ui/HistoryList', () => ({
+  HistoryList: ({ onSelect }: { onSelect: (entry: unknown) => void }) => (
+    <button onClick={() => onSelect({
+      id: 'history-id',
+      repo_url: 'https://github.com/history-owner/history-repo',
+      repo_name: 'history-repo',
+      repo_full_name: 'history-owner/history-repo',
+      issues_count: 0,
+      vibe_score: 80,
+      tokens_used: 50,
+      cost: 0.05,
+      issues: [],
+      files_scanned: 5,
+      duration_ms: 5000,
+      effort: 'standard',
+      created_at: '2026-08-20T00:00:00.000Z',
+    })}>history-repo</button>
+  ),
+}));
+
 const storeHooks = analysisStoreTestHooks!;
 const callbacksByPriority = new Map<api.PriorityLevel, {
   onComplete?: (data: api.CompleteEventData) => void;
 }>();
+const abortsByPriority = new Map<api.PriorityLevel, ReturnType<typeof vi.fn>>();
 
 const estimate: api.AnalysisEstimate = {
   repoInfo: {
@@ -43,8 +64,10 @@ function complete(priority: api.PriorityLevel): api.CompleteEventData {
 
 describe('AnalyzePage history persistence', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     storeHooks.resetApiKeyWriteStateForTests();
     callbacksByPriority.clear();
+    abortsByPriority.clear();
     act(() => {
       useAnalysisStore.getState().resetAnalysis();
       useAnalysisStore.setState({ apiKey: 'sk-test', apiKeyHydrated: true, repoUrl: '' });
@@ -54,7 +77,9 @@ describe('AnalyzePage history persistence', () => {
     vi.mocked(api.getEstimate).mockResolvedValue(estimate);
     vi.mocked(api.analyzeRepository).mockImplementation((_url, _key, priority, callbacks) => {
       callbacksByPriority.set(priority, callbacks);
-      return { abort: vi.fn() };
+      const abort = vi.fn();
+      abortsByPriority.set(priority, abort);
+      return { abort };
     });
     vi.mocked(api.saveAnalysis).mockResolvedValue(true);
   });
@@ -87,5 +112,31 @@ describe('AnalyzePage history persistence', () => {
     await waitFor(() => expect(api.saveAnalysis).toHaveBeenCalledWith(expect.objectContaining({
       repoName: 'repo', repoFullName: 'owner/repo', filesScanned: 3,
     })));
+  });
+
+  it('cancels an active scan before loading history and ignores its late completion', async () => {
+    render(<MemoryRouter><AnalyzePage /></MemoryRouter>);
+
+    fireEvent.change(screen.getByPlaceholderText('https://github.com/owner/repo'), {
+      target: { value: 'https://github.com/owner/repo' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /start analysis/i }));
+
+    await waitFor(() => expect(callbacksByPriority.get(1)).toBeDefined());
+    await act(async () => { callbacksByPriority.get(1)?.onComplete?.(complete(1)); });
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to P2' }));
+    await waitFor(() => expect(callbacksByPriority.get(2)).toBeDefined());
+    await act(async () => { callbacksByPriority.get(2)?.onComplete?.(complete(2)); });
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to P3' }));
+    await waitFor(() => expect(callbacksByPriority.get(3)).toBeDefined());
+
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'history-repo' }));
+
+    expect(abortsByPriority.get(3)).toHaveBeenCalledOnce();
+    await act(async () => { callbacksByPriority.get(3)?.onComplete?.(complete(3)); });
+
+    expect(api.saveAnalysis).not.toHaveBeenCalled();
+    expect(useAnalysisStore.getState().repoInfo?.fullName).toBe('history-owner/history-repo');
   });
 });
