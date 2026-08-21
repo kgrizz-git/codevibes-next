@@ -98,6 +98,7 @@ describe('analysisStore transitions', () => {
         expect(state().repoInfo).toBeNull();
         expect(state().vibeScore).toBe(0);
         expect(state().totalTokensUsed).toBe(0);
+        expect(state().totalCost).toBe(0);
         expect(state().currentPriority).toBeNull();
         expect(state().priorities.every((p) => p.status === 'pending')).toBe(true);
     });
@@ -107,6 +108,16 @@ describe('analysisStore transitions', () => {
         expect(state().awaitingApproval).toBe(1);
         state().setAwaitingApproval(null);
         expect(state().awaitingApproval).toBeNull();
+    });
+
+    it('sets accumulated cost and resets it with an analysis', () => {
+        state().setTotalCost(0.0042);
+        expect(state().totalCost).toBeCloseTo(0.0042, 6);
+        state().setTotalCost(0.0081);
+        expect(state().totalCost).toBeCloseTo(0.0081, 6);
+
+        state().resetAnalysis();
+        expect(state().totalCost).toBe(0);
     });
 });
 

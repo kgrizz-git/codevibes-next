@@ -31,6 +31,8 @@ export interface PriorityEstimate {
     estimatedCost: number;
 }
 
+export type EffortLevel = 'quick' | 'standard' | 'thorough';
+
 export interface AnalysisEstimate {
     repoInfo: RepoInfo;
     priority1: PriorityEstimate;
@@ -39,6 +41,8 @@ export interface AnalysisEstimate {
     totalFiles: number;
     totalEstimatedTokens: number;
     totalEstimatedCost: number;
+    effort: EffortLevel;
+    maxFilesPerPriority: number;
 }
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
@@ -71,6 +75,7 @@ export interface CompleteEventData {
     issuesFound: number;
     tokensUsed: number;
     cost: number;
+    effort: EffortLevel;
     nextPriorityEstimate?: PriorityEstimate;
 }
 
@@ -105,8 +110,9 @@ export async function validateRepo(repoUrl: string): Promise<ValidateRepoRespons
 /**
  * Get cost estimate for analyzing a repository
  */
-export async function getEstimate(repoUrl: string): Promise<AnalysisEstimate> {
-    const response = await fetch(`${API_BASE_URL}/api/estimate?repoUrl=${encodeURIComponent(repoUrl)}`, {
+export async function getEstimate(repoUrl: string, effort: EffortLevel = 'standard'): Promise<AnalysisEstimate> {
+    const params = new URLSearchParams({ repoUrl, effort });
+    const response = await fetch(`${API_BASE_URL}/api/estimate?${params.toString()}`, {
         credentials: 'include',  // Send cookies for auth
     });
 
@@ -131,7 +137,8 @@ export function analyzeRepository(
         onIssue?: (issue: AnalysisIssue) => void;
         onComplete?: (data: CompleteEventData) => void;
         onError?: (error: ErrorEventData) => void;
-    }
+    },
+    effort: EffortLevel = 'standard',
 ): { abort: () => void } {
     const controller = new AbortController();
 
@@ -141,7 +148,7 @@ export function analyzeRepository(
             const response = await fetch(`${API_BASE_URL}/api/analyze`, await withCsrfHeaders(API_BASE_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ repoUrl, apiKey, priority }),
+                body: JSON.stringify({ repoUrl, apiKey, priority, effort }),
                 signal: controller.signal,
             }));
 
@@ -345,6 +352,7 @@ export interface HistoryEntry {
     issues: AnalysisIssue[];
     files_scanned?: number;
     duration_ms?: number;
+    effort?: EffortLevel | null;
     created_at: string;
 }
 
@@ -377,6 +385,7 @@ export async function saveAnalysis(data: {
     cost: number;
     filesScanned: number;
     durationMs: number;
+    effort: EffortLevel;
     issues: AnalysisIssue[];
 }): Promise<boolean> {
     const response = await fetch(`${API_BASE_URL}/api/history`, await withCsrfHeaders(API_BASE_URL, {

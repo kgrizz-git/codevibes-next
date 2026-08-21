@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createAnalysis, getUserAnalyses, getAnalysisById, deleteAnalysis } from '../utils/database.js';
 import { type AuthenticatedRequest } from '../utils/auth.js';
 import { logger } from '../utils/logger.js';
+import { resolveSavedEffort } from '../config/effort.js';
 
 /**
  * POST /api/history
@@ -18,10 +19,18 @@ export function saveAnalysis(req: AuthenticatedRequest, res: Response): void {
         return;
     }
 
-    const { repoUrl, repoName, repoFullName, priority, issuesCount, vibeScore, tokensUsed, cost, issues, filesScanned, durationMs } = req.body;
+    const { repoUrl, repoName, repoFullName, priority, effort: requestedEffort, issuesCount, vibeScore, tokensUsed, cost, issues, filesScanned, durationMs } = req.body;
 
     if (!repoUrl || !repoName) {
         res.status(400).json({ error: 'repoUrl and repoName are required' });
+        return;
+    }
+
+    // A missing value is supported for callers upgrading in place. Existing
+    // database rows remain null so the UI can label them as legacy/unknown.
+    const effort = resolveSavedEffort(requestedEffort);
+    if (!effort) {
+        res.status(400).json({ error: 'effort must be quick, standard, or thorough' });
         return;
     }
 
@@ -33,6 +42,7 @@ export function saveAnalysis(req: AuthenticatedRequest, res: Response): void {
             repo_name: repoName,
             repo_full_name: repoFullName,
             priority: priority || null,
+            effort,
             issues_count: issuesCount || 0,
             vibe_score: vibeScore || 100,
             tokens_used: tokensUsed || 0,

@@ -14,7 +14,7 @@ type FilterType = 'all' | 'critical' | 'important' | 'nice-to-have';
 
 export default function ResultsPage() {
   const navigate = useNavigate();
-  const { repoInfo, priorities, vibeScore, totalTokensUsed, filesScanned, elapsedTime, resetAnalysis } = useAnalysisStore();
+  const { repoInfo, priorities, vibeScore, totalTokensUsed, totalCost, filesScanned, elapsedTime, resetAnalysis } = useAnalysisStore();
   const [filter, setFilter] = useState<FilterType>('all');
   const [copied, setCopied] = useState(false);
 
@@ -159,7 +159,7 @@ export default function ResultsPage() {
               </div>
               <div className="p-4 rounded-xl border border-border bg-card text-center">
                 <Coins className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
-                <div className="font-mono font-semibold text-lg text-success">${((totalTokensUsed / 1000000) * 0.14).toFixed(4)}</div>
+                <div className="font-mono font-semibold text-lg text-success">${totalCost.toFixed(4)}</div>
                 <div className="text-xs text-muted-foreground">Cost</div>
               </div>
             </div>

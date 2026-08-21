@@ -5,6 +5,7 @@
 import type { Response } from 'express';
 import type {
     PriorityLevel,
+    PriorityEstimate,
     SSEEvent,
     StatusEventData,
     FileEventData,
@@ -12,15 +13,15 @@ import type {
     CompleteEventData,
     ErrorEventData,
     AnalysisEstimate,
-    RepoInfo
+    RepoInfo,
+    EffortLevel
 } from '../types/index.js';
 import * as githubService from './githubService.js';
 import * as deepseekService from './deepseekService.js';
 import { calculateCost } from '../utils/tokenCounter.js';
 import { getPriorityName } from '../utils/fileFilter.js';
 import { logger } from '../utils/logger.js';
-
-const MAX_FILES_PER_PRIORITY = parseInt(process.env.MAX_FILES_PER_PRIORITY || '20', 10);
+import { resolveMaxFilesPerPriority } from '../config/effort.js';
 
 // -------------------- SSE Helpers --------------------
 
@@ -75,6 +76,31 @@ function sendError(res: Response, message: string, code: string, retryable: bool
 // -------------------- Analysis Functions --------------------
 
 /**
+ * Build the next-priority cost estimate after a successful priority scan.
+ * Byte-identical math to the original inline block; only moved out.
+ */
+async function buildNextPriorityEstimate(
+    owner: string,
+    repo: string,
+    priority: PriorityLevel,
+    files: { path: string }[],
+    totalInputTokens: number,
+    maxFilesPerPriority: number,
+    githubToken?: string,
+): Promise<PriorityEstimate | undefined> {
+    const nextPriority = (priority + 1) as PriorityLevel;
+    const nextFiles = await githubService.getFilesForPriority(owner, repo, nextPriority, maxFilesPerPriority, undefined, githubToken);
+    const avgTokensPerFile = totalInputTokens / files.length || 500;
+    const estimatedTokens = Math.ceil(nextFiles.files.length * avgTokensPerFile);
+
+    return {
+        files: nextFiles.files.length,
+        estimatedTokens,
+        estimatedCost: calculateCost(estimatedTokens, estimatedTokens * 0.2),
+    };
+}
+
+/**
  * Run analysis for a specific priority level
  * Streams results via SSE
  */
@@ -83,6 +109,8 @@ export async function analyzeRepository(
     repoUrl: string,
     apiKey: string,
     priority: PriorityLevel,
+    effort: EffortLevel,
+    maxFilesPerPriority: number,
     githubToken?: string  // User's OAuth token for private repo access
 ): Promise<void> {
     const startTime = Date.now();
@@ -124,7 +152,7 @@ export async function analyzeRepository(
             owner,
             repo,
             priority,
-            MAX_FILES_PER_PRIORITY,
+            maxFilesPerPriority,
             (current, total, path) => {
                 sendStatus(res, `Fetching files... (${current}/${total})`, current, total, path);
                 sendFileEvent(res, path, priority, 'scanning');
@@ -136,6 +164,7 @@ export async function analyzeRepository(
             sendStatus(res, `No files found for Priority ${priority}`, 0, 0);
             sendComplete(res, {
                 priority,
+                effort,
                 filesScanned: 0,
                 issuesFound: 0,
                 tokensUsed: 0,
@@ -182,21 +211,13 @@ export async function analyzeRepository(
         // Calculate next priority estimate if not at P3
         let nextPriorityEstimate;
         if (priority < 3) {
-            const nextPriority = (priority + 1) as PriorityLevel;
-            const nextFiles = await githubService.getFilesForPriority(owner, repo, nextPriority, MAX_FILES_PER_PRIORITY, undefined, githubToken);
-            const avgTokensPerFile = totalInputTokens / files.length || 500;
-            const estimatedTokens = Math.ceil(nextFiles.files.length * avgTokensPerFile);
-
-            nextPriorityEstimate = {
-                files: nextFiles.totalMatching,
-                estimatedTokens,
-                estimatedCost: calculateCost(estimatedTokens, estimatedTokens * 0.2),
-            };
+            nextPriorityEstimate = await buildNextPriorityEstimate(owner, repo, priority, files, totalInputTokens, maxFilesPerPriority, githubToken);
         }
 
         // Send completion event
         sendComplete(res, {
             priority,
+            effort,
             filesScanned: files.length,
             issuesFound: allIssues.length,
             tokensUsed: totalTokens,
@@ -208,6 +229,8 @@ export async function analyzeRepository(
         logger.info('Analysis complete', {
             repo: `${owner}/${repo}`,
             priority,
+            effort,
+            maxFilesPerPriority,
             files: files.length,
             issues: allIssues.length,
             tokens: totalTokens,
@@ -233,7 +256,11 @@ export async function analyzeRepository(
 /**
  * Get analysis estimate without running full analysis
  */
-export async function getEstimate(repoUrl: string, githubToken?: string): Promise<AnalysisEstimate> {
+export async function getEstimate(
+    repoUrl: string,
+    effort: EffortLevel,
+    githubToken?: string,
+): Promise<AnalysisEstimate> {
     // Parse GitHub URL
     const parsed = githubService.parseGitHubUrl(repoUrl);
     if (!parsed) {
@@ -257,9 +284,10 @@ export async function getEstimate(repoUrl: string, githubToken?: string): Promis
     const AVG_TOKENS_PER_FILE = 500;
     const OUTPUT_RATIO = 0.2;
 
-    const p1Files = Math.min(counts.priority1, MAX_FILES_PER_PRIORITY);
-    const p2Files = Math.min(counts.priority2, MAX_FILES_PER_PRIORITY);
-    const p3Files = Math.min(counts.priority3, MAX_FILES_PER_PRIORITY);
+    const maxFilesPerPriority = resolveMaxFilesPerPriority(effort);
+    const p1Files = Math.min(counts.priority1, maxFilesPerPriority);
+    const p2Files = Math.min(counts.priority2, maxFilesPerPriority);
+    const p3Files = Math.min(counts.priority3, maxFilesPerPriority);
 
     const p1Tokens = p1Files * AVG_TOKENS_PER_FILE;
     const p2Tokens = p2Files * AVG_TOKENS_PER_FILE;
@@ -289,6 +317,8 @@ export async function getEstimate(repoUrl: string, githubToken?: string): Promis
 
     return {
         repoInfo,
+        effort,
+        maxFilesPerPriority,
         priority1,
         priority2,
         priority3,

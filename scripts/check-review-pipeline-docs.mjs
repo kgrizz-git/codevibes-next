@@ -12,6 +12,7 @@ const MAPPINGS = {
   "codevibes-backend/src/utils/fileFilter.ts": "docs/review-pipeline/02-file-selection.md",
   "codevibes-backend/src/services/githubService.ts": "docs/review-pipeline/01-discovery.md",
   "codevibes-backend/src/services/analysisService.ts": "docs/review-pipeline/03-orchestration-sse.md",
+  "codevibes-backend/src/config/effort.ts": "docs/review-pipeline/03-orchestration-sse.md",
   "codevibes-backend/src/services/deepseekService.ts": "docs/review-pipeline/04-reviewing-agent.md",
   "codevibes-backend/src/utils/tokenCounter.ts": "docs/review-pipeline/05-cost-model.md",
 };

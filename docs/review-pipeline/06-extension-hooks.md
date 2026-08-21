@@ -1,41 +1,39 @@
 # 6. Extension hooks (forward-looking)
 
-A "where to change X" index so future work lands in the right place. Each item references the
-doc page that covers the relevant code.
+Where to make common review-pipeline changes.
 
-## Add support for a new language (TO_DO item 5 — broader coverage)
-- **Primary edit:** `fileFilter.ts` `PRIORITY_3_PATTERNS` catch-all extension list
-  (`02-file-selection.md`). Add the new extension(s) (e.g. `kt`, `swift`, `cs`, `c`, `cpp`).
-- A file with an unlisted extension that doesn't match a P1/P2 pattern is currently **dropped**
-  (`fileFilter.ts:265-266`) — so the catch-all is the single gate.
-- Watch the `MAX_FILES_PER_PRIORITY` cap so a broader P3 doesn't starve P1/P2 in the UI flow.
+## Add a language
 
-## Add a new file/pattern rule (TO_DO item 5 — greater variation)
-- Extend `IGNORE_PATTERNS`, `PRIORITY_1_PATTERNS`, or `PRIORITY_2_PATTERNS` in `fileFilter.ts`
-  (`02-file-selection.md`). Prefer `minimatch` globs (`dot`/`matchBase` already enabled).
+- Add extensions to `fileFilter.ts` `SOURCE_EXTENSIONS`; `02-file-selection.md` describes the
+  classifier.
+- An unlisted extension is dropped unless an explicit direct rule selects it. Keep P1/P2 naming
+  and directory conventions source-gated: `minimatch` with `matchBase` makes broad globs unsafe.
+- Update the file-filter tests, file-selection reference, and generated pipeline contract.
 
-## Add a new model provider (provider plan)
-- Network layer + SSE parsing live in `deepseekService.ts` (`04-reviewing-agent.md`):
-  endpoint, `MODEL`, request body, streaming reader, `[DONE]` handling, `decoder.flush()`.
-- **Known SSE gaps to fix there:** missing `decoder.flush()` after the read loop, plus
-  `[DONE]` handled via `continue` (`:831-863`). Note `done` carries no data payload, so the gap
-  is the uncalled `flush()` (theoretical multi-byte edge case), not a dropped chunk.
-- Make pricing provider-aware: replace the hardcoded constants in `tokenCounter.ts`
-  (`05-cost-model.md`) with a provider registry (`pricingStatus`/`costBasis`).
-- `getPromptForPriority` assumes an OpenAI-compatible chat completions shape; adapters needed
-  for Anthropic/Gemini/etc. (provider plan scope).
+## Add a selection rule
 
-## Add selectable effort / detail layers (TO_DO item 5 — enhance reviews)
-- **Prompt depth:** extend `getPromptForPriority(priority)` in `deepseekService.ts`
-  (`04-reviewing-agent.md`) — e.g. a `quick` variant appends "report only CRITICAL/HIGH, be
-  terse"; a `thorough` variant adds depth. Keep the enforced JSON schema intact.
-- **Scope / budget:** scale `MAX_FILES_PER_PRIORITY` (`03-orchestration-sse.md`, env knob) and
-  `max_tokens: 8000` (`deepseekService.ts:729,805`) per layer.
-- **Estimates:** adjust the hardcoded `AVG_TOKENS_PER_FILE = 500` and `OUTPUT_RATIO = 0.2`
-  (`03-orchestration-sse.md`, `05-cost-model.md`) so UI estimates stay honest per layer.
-- **Client surface:** expose the layer in `AnalyzePage` (SSE consumer), persist per-analysis,
-  and report it in the `complete`/`estimate` payloads (mirror how `priority` and `cost` flow today).
+- Add a direct policy-file rule or a source-gated P1/P2 convention in `fileFilter.ts`.
+- For Terraform, `*.tf`, `*.tfvars`, `*.tf.json`, and `*.tfvars.json` may be P1, but
+  `.terraform/**` remains ignored.
+- Avoid broad patterns such as `*main*`, `*test*`, or `*model*`; test false positives as well as
+  the intended path.
 
-## Add live token streaming (enhancement)
-- `analysisService.ts:164-166` currently discards `chunk` events from `streamAnalysis`. Wire
-  those into a live "thinking" UI instead of waiting for `complete`.
+## Add a model provider
+
+- The legacy network/SSE path remains in `deepseekService.ts`, which must stay byte-for-byte
+  unchanged until `USE_LEGACY_PROVIDER` is retired.
+- Provider adapters own prompts, JSON-schema compatibility, output limits, and provider-specific
+  prices. Update `04-reviewing-agent.md` and `05-cost-model.md` with that work.
+
+## Extend effort layers
+
+- Scope is configured in `config/effort.ts`: quick/standard/thorough layer caps are bounded by
+  the global `MAX_FILES_PER_PRIORITY` cap. See `03-orchestration-sse.md`.
+- The frontend remembers only the next-run preference and stores the chosen effort per analysis.
+- Prompt depth and output limits are deferred to the routed provider; while legacy routing is
+  active, effort is scope-only.
+
+## Add live token streaming
+
+`analysisService` currently discards provider `chunk` events. A future UI may relay them, but must
+keep `complete` as the authoritative source for final token and cost accounting.

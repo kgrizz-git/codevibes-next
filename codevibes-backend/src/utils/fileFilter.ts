@@ -23,6 +23,8 @@ const IGNORE_PATTERNS = [
     '.nuxt/**',
     '.output/**',
     'target/**',
+    '.terraform/**',
+    '**/.terraform/**',
 
     // Version control
     '.git/**',
@@ -82,19 +84,44 @@ const IGNORE_PATTERNS = [
     'auto-generated/**',
 ];
 
-// -------------------- Priority 1: Security Critical --------------------
-const PRIORITY_1_PATTERNS = [
-    // Environment files
-    '.env',
-    '.env.local',
-    '.env.production',
-    '.env.development',
-    '.env.test',
-    '**/.env',
-    // Exclude .env.example which usually contains placeholders
-    // '.env.example' is implicitly excluded by not matching specific .env variants above
-    // or we can handle it in the filter logic, but removing wildcard .env.* helps
+// -------------------- Recognized source files --------------------
+// Keep this explicit and lowercase. Filename and directory conventions below are
+// applied only to these extensions so that a similarly named document or artifact
+// cannot consume a higher-priority review slot.
+const SOURCE_EXTENSIONS = new Set([
+    // Existing source coverage
+    'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'go', 'rb', 'php', 'rs',
 
+    // Broader language coverage
+    'kt', 'kts', 'cs', 'c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'm', 'mm',
+    'swift', 'scala', 'sc', 'ex', 'exs', 'dart', 'lua', 'r', 'pl', 'pm',
+    'sh', 'bash', 'zsh', 'ps1', 'fs', 'fsx', 'vb', 'groovy', 'clj', 'cljs',
+    'hs', 'erl', 'hrl', 'zig', 'sol',
+]);
+
+// -------------------- Priority 1: Security Critical --------------------
+// These intentionally support the deliberate non-source configuration inputs.
+const PRIORITY_1_DIRECT_PATTERNS = [
+    // Exact environment policy files. Mode files are handled separately so
+    // examples/templates never consume a priority-1 review slot.
+    '.env',
+    '.envrc',
+
+    // Infrastructure and database policy
+    '**/*.tf',
+    '**/*.tfvars',
+    '**/*.tf.json',
+    '**/*.tfvars.json',
+    '**/*.sql',
+];
+
+const DOTENV_MODE_FILE_PATTERN = /^\.env(?:\.[^./]+)+$/;
+const NON_DEPLOYABLE_DOTENV_SEGMENTS = new Set(['example', 'template', 'sample']);
+
+// Directory and filename conventions are source-gated. Without this guard,
+// minimatch's matchBase option can elevate an unrelated artifact named "main",
+// "model", "route", or similar.
+const PRIORITY_1_SOURCE_DIRECTORY_PATTERNS = [
     // Auth/Security directories
     '**/auth/**',
     '**/authentication/**',
@@ -107,6 +134,29 @@ const PRIORITY_1_PATTERNS = [
     '**/config/**',
     '**/configs/**',
     '**/configuration/**',
+    // Middleware (often contains auth logic)
+    '**/middleware/**',
+    '**/middlewares/**',
+
+    // Database & Queries (Moved to P1 as requested)
+    '**/database/**',
+    '**/db/**',
+    '**/repositories/**',
+    '**/queries/**',
+    '**/migrations/**',
+
+    // CORS & Network Security
+    '**/access-control/**',
+
+    // Security frameworks and secret-management conventions
+    '**/oauth/**',
+    '**/jwt/**',
+    '**/session/**',
+    '**/iam/**',
+    '**/vault/**',
+];
+
+const PRIORITY_1_SOURCE_FILENAME_PATTERNS = [
     '*.config.js',
     '*.config.ts',
 
@@ -118,25 +168,24 @@ const PRIORITY_1_PATTERNS = [
     '**/*credential*',
     '**/*private*',
 
-    // Middleware (often contains auth logic)
-    '**/middleware/**',
-    '**/middlewares/**',
-
-    // Database & Queries (Moved to P1 as requested)
-    '**/database/**',
-    '**/db/**',
-    '**/repositories/**',
-    '**/*.sql',
-    '**/queries/**',
-    '**/migrations/**',
-
     // CORS & Network Security
     '**/*cors*',
-    '**/access-control/**',
+
+    // Security frameworks and secret-management conventions
+    '**/*oauth*',
+    '**/*jwt*',
+    '**/*session*',
+    '**/*iam*',
+    '**/*vault*',
 ];
 
 // -------------------- Priority 2: Core Business Logic --------------------
-const PRIORITY_2_PATTERNS = [
+const PRIORITY_2_DIRECT_PATTERNS = [
+    // Rust package manifest
+    'Cargo.toml',
+];
+
+const PRIORITY_2_SOURCE_DIRECTORY_PATTERNS = [
     // API layer
     '**/api/**',
     '**/routes/**',
@@ -149,12 +198,32 @@ const PRIORITY_2_PATTERNS = [
     '**/handlers/**',
     '**/use-cases/**',
     '**/usecases/**',
+    '**/graphql/**',
+    '**/resolvers/**',
+    '**/mutations/**',
+    '**/workers/**',
+    '**/jobs/**',
+    '**/tasks/**',
 
     // Data layer
     '**/models/**',
     '**/entities/**',
     '**/schemas/**',
 
+    // Go conventions
+    '**/cmd/**',
+    '**/internal/**',
+    '**/pkg/**',
+
+    // Rust conventions (avoid a blanket src/** rule)
+    '**/crates/*/src/**',
+    '**/src/bin/**',
+
+    // Core source files
+    'lib/**',
+];
+
+const PRIORITY_2_SOURCE_FILENAME_PATTERNS = [
     // Entry points
     'index.js',
     'index.ts',
@@ -168,15 +237,32 @@ const PRIORITY_2_PATTERNS = [
     'app.py',
     '__main__.py',
 
+    // Go convention
+    'main.go',
+
+    // Rust entry points
+    '**/src/main.rs',
+    '**/src/lib.rs',
+
     // Core source files
     'src/index.*',
     'src/main.*',
     'src/app.*',
-    'lib/**',
 ];
 
 // -------------------- Priority 3: Supporting Code --------------------
-const PRIORITY_3_PATTERNS = [
+const PRIORITY_3_NON_SOURCE_PATTERNS = [
+    // Documentation
+    '*.md',
+    '**/docs/**',
+
+    // Styles
+    '**/*.css',
+    '**/*.scss',
+    '**/*.less',
+];
+
+const PRIORITY_3_SOURCE_PATTERNS = [
     // Utilities
     '**/utils/**',
     '**/utilities/**',
@@ -199,26 +285,7 @@ const PRIORITY_3_PATTERNS = [
     '**/tests/**',
     '**/__tests__/**',
 
-    // Documentation
-    '*.md',
-    '**/docs/**',
-
-    // Styles
-    '**/*.css',
-    '**/*.scss',
-    '**/*.less',
-
-    // Everything else (catch-all for remaining source files)
-    '**/*.js',
-    '**/*.ts',
-    '**/*.jsx',
-    '**/*.tsx',
-    '**/*.py',
-    '**/*.java',
-    '**/*.go',
-    '**/*.rb',
-    '**/*.php',
-    '**/*.rs',
+    // The recognized source-extension admission gate is applied in the classifier.
 ];
 
 /**
@@ -228,6 +295,27 @@ function matchesAnyPattern(filePath: string, patterns: string[]): boolean {
     return patterns.some(pattern =>
         minimatch(filePath, pattern, { dot: true, matchBase: true })
     );
+}
+
+function isRecognizedSourceFile(filePath: string): boolean {
+    const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
+    const extensionStart = fileName.lastIndexOf('.');
+
+    return extensionStart > 0 && SOURCE_EXTENSIONS.has(fileName.slice(extensionStart + 1));
+}
+
+function matchesSourcePattern(filePath: string, patterns: string[]): boolean {
+    return isRecognizedSourceFile(filePath) && matchesAnyPattern(filePath, patterns);
+}
+
+function isDeployableDotenvModeFile(filePath: string): boolean {
+    const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
+    if (!DOTENV_MODE_FILE_PATTERN.test(fileName)) return false;
+
+    return fileName
+        .split('.')
+        .slice(2)
+        .every(segment => !NON_DEPLOYABLE_DOTENV_SEGMENTS.has(segment.toLowerCase()));
 }
 
 /**
@@ -248,17 +336,30 @@ export function getFilePriority(filePath: string): PriorityLevel | null {
     }
 
     // Check Priority 1 (Security Critical)
-    if (matchesAnyPattern(filePath, PRIORITY_1_PATTERNS)) {
+    if (
+        matchesAnyPattern(filePath, PRIORITY_1_DIRECT_PATTERNS) ||
+        isDeployableDotenvModeFile(filePath) ||
+        matchesSourcePattern(filePath, PRIORITY_1_SOURCE_DIRECTORY_PATTERNS) ||
+        matchesSourcePattern(filePath, PRIORITY_1_SOURCE_FILENAME_PATTERNS)
+    ) {
         return 1;
     }
 
     // Check Priority 2 (Core Business Logic)
-    if (matchesAnyPattern(filePath, PRIORITY_2_PATTERNS)) {
+    if (
+        matchesAnyPattern(filePath, PRIORITY_2_DIRECT_PATTERNS) ||
+        matchesSourcePattern(filePath, PRIORITY_2_SOURCE_DIRECTORY_PATTERNS) ||
+        matchesSourcePattern(filePath, PRIORITY_2_SOURCE_FILENAME_PATTERNS)
+    ) {
         return 2;
     }
 
     // Check if it's a recognized source file for Priority 3
-    if (matchesAnyPattern(filePath, PRIORITY_3_PATTERNS)) {
+    if (
+        matchesAnyPattern(filePath, PRIORITY_3_NON_SOURCE_PATTERNS) ||
+        matchesSourcePattern(filePath, PRIORITY_3_SOURCE_PATTERNS) ||
+        isRecognizedSourceFile(filePath)
+    ) {
         return 3;
     }
 

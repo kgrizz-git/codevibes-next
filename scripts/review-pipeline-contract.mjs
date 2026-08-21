@@ -26,23 +26,49 @@ function requireMatch(text, pattern, label) {
 
 const fileFilter = source("codevibes-backend/src/utils/fileFilter.ts");
 const analysis = source("codevibes-backend/src/services/analysisService.ts");
+const effortConfig = source("codevibes-backend/src/config/effort.ts");
 const github = source("codevibes-backend/src/services/githubService.ts");
 const deepseek = source("codevibes-backend/src/services/deepseekService.ts");
 const tokens = source("codevibes-backend/src/utils/tokenCounter.ts");
 
-const priority3 = requireMatch(
+const sourceExtensions = requireMatch(
   fileFilter,
-  /const PRIORITY_3_PATTERNS = \[([\s\S]*?)\n\];/,
-  "Priority 3 patterns",
+  /const SOURCE_EXTENSIONS = new Set\(\[([\s\S]*?)\n\]\);/,
+  "recognized source extensions",
 );
-const extensions = [...priority3.matchAll(/'\*\*\/\*\.([a-z0-9]+)'/gi)].map((match) => match[1]);
+const extensions = [...sourceExtensions.matchAll(/'([a-z0-9]+)'/gi)].map((match) => match[1]);
+const ignoredPatterns = [...requireMatch(
+  fileFilter,
+  /const IGNORE_PATTERNS = \[([\s\S]*?)\n\];/,
+  "ignore patterns",
+).matchAll(/'([^']+)'/g)].map((match) => match[1]);
+const priority1DirectPatterns = [...requireMatch(
+  fileFilter,
+  /const PRIORITY_1_DIRECT_PATTERNS = \[([\s\S]*?)\n\];/,
+  "priority 1 direct patterns",
+).matchAll(/'([^']+)'/g)].map((match) => match[1]);
+const dotenvPatterns = priority1DirectPatterns.filter((pattern) => pattern.startsWith(".env"));
+const dotenvModePattern = requireMatch(
+  fileFilter,
+  /const DOTENV_MODE_FILE_PATTERN = (\/[^\n]+\/);/,
+  "dotenv mode matcher",
+);
+const excludedDotenvSegments = [...requireMatch(
+  fileFilter,
+  /const NON_DEPLOYABLE_DOTENV_SEGMENTS = new Set\(\[([^\]]+)\]\);/,
+  "excluded dotenv mode segments",
+).matchAll(/'([^']+)'/g)].map((match) => match[1]);
+const terraformPatterns = priority1DirectPatterns.filter((pattern) => pattern.includes("*.tf"));
+const terraformIgnorePatterns = ignoredPatterns.filter((pattern) => pattern.includes(".terraform"));
 const events = [...analysis.matchAll(/type:\s*'([a-z]+)'/g)].map((match) => match[1]);
 
 const maxFiles = requireMatch(
-  analysis,
-  /MAX_FILES_PER_PRIORITY\s*=\s*parseInt\(process\.env\.MAX_FILES_PER_PRIORITY\s*\|\|\s*'([^']+)'/,
+  effortConfig,
+  /parsePositiveWholeNumber\('MAX_FILES_PER_PRIORITY', env\.MAX_FILES_PER_PRIORITY, (\d+)\)/,
   "MAX_FILES_PER_PRIORITY default",
 );
+const effortCaps = [...effortConfig.matchAll(/parsePositiveWholeNumber\('EFFORT_([A-Z]+)_MAX_FILES', env\.EFFORT_[A-Z]+_MAX_FILES, (\d+)\)/g)]
+  .map((match) => `${match[1].toLowerCase()}=${match[2]}`);
 const avgTokens = requireMatch(analysis, /AVG_TOKENS_PER_FILE\s*=\s*(\d+)/, "AVG_TOKENS_PER_FILE");
 const outputRatio = requireMatch(analysis, /OUTPUT_RATIO\s*=\s*([\d.]+)/, "OUTPUT_RATIO");
 const cacheTtlMinutes = requireMatch(github, /CACHE_TTL\s*=\s*(\d+)\s*\*\s*60\s*\*\s*1000/, "cache TTL");
@@ -67,14 +93,17 @@ const content = `# Generated Review-Pipeline Contract
 
 | Fact | Source value |
 |---|---|
-| Recognized P3 source extensions | \`${extensions.join(" ")}\` |
+| Recognized source extensions | \`${extensions.join(" ")}\` |
+| P1 dotenv policy | direct: \`${dotenvPatterns.join(" ")}\`; mode matcher: \`${dotenvModePattern}\`; excluded segments: \`${excludedDotenvSegments.join(" ")}\` |
+| Terraform policy | P1: \`${terraformPatterns.join(" ")}\`; ignored: \`${terraformIgnorePatterns.join(" ")}\` |
 | Priority order | ignore → P1 → P2 → P3 (first match wins) |
 
 ## Discovery and analysis
 
 | Fact | Source value |
 |---|---|
-| Default files per priority | \`${maxFiles}\` (\`MAX_FILES_PER_PRIORITY\`) |
+| Global files-per-priority safety cap | \`${maxFiles}\` default; overridden by \`MAX_FILES_PER_PRIORITY\` |
+| Effort-layer file caps | \`${effortCaps.join(", ")}\` defaults; overridden by each corresponding \`EFFORT_*_MAX_FILES\` setting (each is constrained by the global cap) |
 | Tree-cache TTL | \`${cacheTtlMinutes}\` minutes |
 | Content-fetch batch size | \`${batchSize}\` |
 | Gap between batches | \`${batchDelay}\` ms |

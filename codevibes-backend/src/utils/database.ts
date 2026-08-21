@@ -46,6 +46,7 @@ db.exec(`
         repo_name TEXT NOT NULL,
         repo_full_name TEXT,
         priority INTEGER,
+        effort TEXT,
         issues_count INTEGER DEFAULT 0,
         vibe_score INTEGER DEFAULT 100,
         tokens_used INTEGER DEFAULT 0,
@@ -61,14 +62,27 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC);
 `);
 
-// Migration: Add new columns if they don't exist
-try {
-    db.exec('ALTER TABLE analyses ADD COLUMN files_scanned INTEGER DEFAULT 0');
-} catch { /* Column likely exists */ }
+// Migration: Add new columns if they don't exist. Inspecting the schema first
+// avoids hiding unrelated migration failures behind a duplicate-column catch.
+export function migrateAnalysisColumns(database: import('better-sqlite3').Database = db): void {
+    const columns = database.pragma('table_info(analyses)') as Array<{ name: string }>;
+    const existingColumns = new Set(columns.map(column => column.name));
+    const migrations = [
+        ['files_scanned', 'ALTER TABLE analyses ADD COLUMN files_scanned INTEGER DEFAULT 0'],
+        ['duration_ms', 'ALTER TABLE analyses ADD COLUMN duration_ms INTEGER DEFAULT 0'],
+        // Nullable intentionally distinguishes existing, pre-effort rows from
+        // analyses saved after effort became part of the public contract.
+        ['effort', 'ALTER TABLE analyses ADD COLUMN effort TEXT'],
+    ] as const;
 
-try {
-    db.exec('ALTER TABLE analyses ADD COLUMN duration_ms INTEGER DEFAULT 0');
-} catch { /* Column likely exists */ }
+    for (const [column, statement] of migrations) {
+        if (!existingColumns.has(column)) {
+            database.exec(statement);
+        }
+    }
+}
+
+migrateAnalysisColumns();
 
 
 logger.info('Database initialized', { path: DB_PATH });
@@ -183,6 +197,7 @@ export interface Analysis {
     repo_name: string;
     repo_full_name?: string;
     priority?: number;
+    effort?: 'quick' | 'standard' | 'thorough' | null;
     issues_count: number;
     vibe_score: number;
     tokens_used: number;
@@ -195,8 +210,8 @@ export interface Analysis {
 
 export function createAnalysis(analysis: Omit<Analysis, 'created_at'>): Analysis {
     const stmt = db.prepare(`
-        INSERT INTO analyses (id, user_id, repo_url, repo_name, repo_full_name, priority, issues_count, vibe_score, tokens_used, cost, issues_json, files_scanned, duration_ms)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO analyses (id, user_id, repo_url, repo_name, repo_full_name, priority, effort, issues_count, vibe_score, tokens_used, cost, issues_json, files_scanned, duration_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
         analysis.id,
@@ -205,6 +220,7 @@ export function createAnalysis(analysis: Omit<Analysis, 'created_at'>): Analysis
         analysis.repo_name,
         analysis.repo_full_name,
         analysis.priority,
+        analysis.effort,
         analysis.issues_count,
         analysis.vibe_score,
         analysis.tokens_used,

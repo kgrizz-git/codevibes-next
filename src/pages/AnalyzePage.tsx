@@ -4,6 +4,7 @@ import { Github, Star, FileCode, Play, ArrowRight, Loader2, File, Menu, X, Chevr
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SettingsModal } from '@/components/SettingsModal';
+import { EffortSelector } from '@/components/EffortSelector';
 import { VibeScoreGauge } from '@/components/ui/VibeScoreGauge';
 import { PriorityBadge } from '@/components/ui/PriorityBadge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
@@ -18,43 +19,39 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useAnalysisStore, type AnalysisIssue } from '@/store/analysisStore';
+import { useAnalysisStore, type AnalysisIssue, type RepoInfo } from '@/store/analysisStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import * as api from '@/lib/api';
+import { readEffortPreference } from '@/lib/effortPreference';
+import { calculateVibeScore, toStoreIssue } from '@/lib/analysisIssue';
+import { parseGitHubRepositoryUrl } from '@/lib/githubUrl';
+import { isEffortSelectorLocked, applyEffortChange } from '@/lib/effortSelection';
+import { useEffortEstimate } from '@/hooks/useEffortEstimate';
 import { useAuth } from '@/contexts/AuthContext';
 
-// Map API severity to store severity
-function mapSeverity(severity: string): 'critical' | 'important' | 'nice-to-have' {
-  const s = severity?.toUpperCase();
-  switch (s) {
-    case 'CRITICAL':
-    case 'HIGH':
-      return 'critical';
-    case 'MEDIUM':
-    case 'MODERATE':
-      return 'important';
-    case 'LOW':
-    case 'NICE-TO-HAVE':
-      return 'nice-to-have';
-    default:
-      return 'nice-to-have';
-  }
-}
+async function validateAndEstimateRepo(
+  owner: string,
+  name: string,
+  effort: api.EffortLevel,
+  setStatusMessage: (message: string) => void,
+  loadEstimate: (repoUrl: string, selectedEffort: api.EffortLevel) => Promise<api.AnalysisEstimate | null>,
+): Promise<RepoInfo | null> {
+  try {
+    setStatusMessage('Validating repository...');
+    const result = await api.validateRepo(`https://github.com/${owner}/${name}`);
+    if (!result.valid) {
+      toast.error(result.error || 'Repository not found');
+      return null;
+    }
 
-// Convert API issue to store issue
-function toStoreIssue(issue: api.AnalysisIssue): AnalysisIssue {
-  return {
-    id: issue.id,
-    severity: mapSeverity(issue.severity),
-    title: issue.title,
-    description: issue.description,
-    file: issue.file,
-    line: issue.line,
-    codeExample: issue.codeExample,
-    suggestion: issue.fix,
-    category: issue.category,
-  };
+    const repoInfo = { owner, name, fullName: result.fullName, stars: result.stars, lastUpdate: result.lastUpdate, defaultBranch: result.defaultBranch };
+    setStatusMessage('Estimating analysis...');
+    return (await loadEstimate(`https://github.com/${owner}/${name}`, effort)) !== null ? repoInfo : null;
+  } catch (error: unknown) {
+    toast.error(error instanceof Error ? error.message : 'Failed to fetch repository info');
+    return null;
+  }
 }
 
 export default function AnalyzePage() {
@@ -62,7 +59,7 @@ export default function AnalyzePage() {
   const {
     apiKey, repoUrl, setRepoUrl, repoInfo, setRepoInfo, isAnalyzing, setIsAnalyzing,
     currentPriority, setCurrentPriority, priorities, updatePriority, vibeScore, setVibeScore,
-    totalTokensUsed, addTokensUsed, setTotalTokensUsed, filesScanned, setFilesScanned, incrementFilesScanned, elapsedTime,
+    totalTokensUsed, setTotalTokensUsed, totalCost, setTotalCost, filesScanned, setFilesScanned, incrementFilesScanned, elapsedTime,
     incrementElapsedTime, setElapsedTime, awaitingApproval, setAwaitingApproval, resetAnalysis,
   } = useAnalysisStore();
   const { user, isAuthenticated, login, logout: handleLogout } = useAuth();
@@ -75,8 +72,8 @@ export default function AnalyzePage() {
   const [statusMessage, setStatusMessage] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isDark, setIsDark] = useState(true);
+  const [effort, setEffort] = useState<api.EffortLevel>(readEffortPreference);
 
-  // Repo selector state
   const [repoMode, setRepoMode] = useState<'url' | 'select'>('url');
   const [userRepos, setUserRepos] = useState<api.UserRepo[]>([]);
   const [selectedRepo, setSelectedRepo] = useState<api.UserRepo | null>(null);
@@ -85,9 +82,16 @@ export default function AnalyzePage() {
   const [showLoginDialog, setShowLoginDialog] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const elapsedTimeRef = useRef(0);
   const analysisRef = useRef<{ abort: () => void } | null>(null);
+  const analysisGenerationRef = useRef(0);
+  const sessionEffortRef = useRef<api.EffortLevel>('standard');
+  const sessionRepoInfoRef = useRef<RepoInfo | null>(null);
+  const sessionRepoUrlRef = useRef('');
+  const sessionTotalsRef = useRef({ tokensUsed: 0, cost: 0, filesScanned: 0 });
+  const sessionIssuesRef = useRef<Record<1 | 2 | 3, AnalysisIssue[]>>({ 1: [], 2: [], 3: [] });
+  const { invalidate: invalidateEstimate, load: loadEstimate, maxFilesPerPriority } = useEffortEstimate(updatePriority);
 
-  // Theme initialization
   useEffect(() => {
     const stored = localStorage.getItem('theme');
     const shouldBeDark = stored !== 'light';
@@ -95,7 +99,6 @@ export default function AnalyzePage() {
     document.documentElement.classList.toggle('dark', shouldBeDark);
   }, []);
 
-  // Check for pending analysis URL after login
   useEffect(() => {
     const pendingUrl = localStorage.getItem('pending_analysis_url');
     if (pendingUrl && isAuthenticated) {
@@ -113,62 +116,12 @@ export default function AnalyzePage() {
     document.documentElement.classList.toggle('dark', newIsDark);
   };
 
-  const validateGitHubUrl = (url: string): { owner: string; name: string } | null => {
-    const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
-    if (match) return { owner: match[1], name: match[2].replace(/\.git$/, '') };
-    return null;
-  };
-
-  const fetchRepoInfo = async (owner: string, name: string) => {
-    try {
-      setStatusMessage('Validating repository...');
-      const result = await api.validateRepo(`https://github.com/${owner}/${name}`);
-
-      if (!result.valid) {
-        toast.error(result.error || 'Repository not found');
-        return false;
-      }
-
-      setRepoInfo({
-        owner,
-        name,
-        fullName: result.fullName,
-        stars: result.stars,
-        lastUpdate: result.lastUpdate,
-        defaultBranch: result.defaultBranch,
-      });
-
-      // Fetch estimate to get file counts
-      setStatusMessage('Estimating analysis...');
-      const estimate = await api.getEstimate(`https://github.com/${owner}/${name}`);
-
-      // Update priority file counts (we don't have actual file paths yet)
-      updatePriority(1, {
-        files: Array.from({ length: estimate.priority1.files }, (_, i) => `security-file-${i + 1}`),
-        status: 'pending'
-      });
-      updatePriority(2, {
-        files: Array.from({ length: estimate.priority2.files }, (_, i) => `core-file-${i + 1}`),
-        status: 'pending'
-      });
-      updatePriority(3, {
-        files: Array.from({ length: estimate.priority3.files }, (_, i) => `support-file-${i + 1}`),
-        status: 'pending'
-      });
-
-      return true;
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to fetch repository info');
-      return false;
-    }
-  };
-
   const handleStartAnalysis = async () => {
     if (!inputUrl.trim()) {
       toast.error('Please enter a repository URL');
       return;
     }
-    const parsed = validateGitHubUrl(inputUrl);
+    const parsed = parseGitHubRepositoryUrl(inputUrl);
     if (!parsed) {
       toast.error('Invalid GitHub URL');
       return;
@@ -179,21 +132,42 @@ export default function AnalyzePage() {
       return;
     }
 
-    // Check authentication - show login dialog if not authenticated
     if (!isAuthenticated) {
       localStorage.setItem('pending_analysis_url', inputUrl);
       setShowLoginDialog(true);
       return;
     }
 
+    const selectedEffort = effort;
+    const analysisGeneration = ++analysisGenerationRef.current;
     setRepoUrl(inputUrl);
     resetAnalysis();
+    setIsAnalyzing(true);
+    sessionEffortRef.current = selectedEffort;
+    sessionRepoInfoRef.current = null;
+    sessionRepoUrlRef.current = inputUrl;
+    sessionTotalsRef.current = { tokensUsed: 0, cost: 0, filesScanned: 0 };
+    sessionIssuesRef.current = { 1: [], 2: [], 3: [] };
+    setTotalCost(0);
+    elapsedTimeRef.current = 0;
+    invalidateEstimate();
 
-    const success = await fetchRepoInfo(parsed.owner, parsed.name);
-    if (!success) return;
+    const validatedRepoInfo = await validateAndEstimateRepo(parsed.owner, parsed.name, sessionEffortRef.current, setStatusMessage, loadEstimate);
+    if (analysisGeneration !== analysisGenerationRef.current) return;
+    if (!validatedRepoInfo) { setIsAnalyzing(false); setStatusMessage(''); return; }
+    setRepoInfo(validatedRepoInfo);
+    sessionRepoInfoRef.current = validatedRepoInfo;
 
-    timerRef.current = setInterval(() => incrementElapsedTime(), 1000);
-    startPriorityScan(1);
+    timerRef.current = setInterval(() => {
+      elapsedTimeRef.current += 1;
+      incrementElapsedTime();
+    }, 1000);
+    startPriorityScan(1, analysisGeneration);
+  };
+
+  const handleEffortChange = (nextEffort: api.EffortLevel) => {
+    invalidateEstimate();
+    applyEffortChange(nextEffort, inputUrl, setEffort, loadEstimate);
   };
 
   const handleLoginAndContinue = () => {
@@ -201,61 +175,63 @@ export default function AnalyzePage() {
     login();
   };
 
-  const startPriorityScan = async (level: 1 | 2 | 3) => {
+  const startPriorityScan = async (level: 1 | 2 | 3, analysisGeneration = analysisGenerationRef.current) => {
     setIsAnalyzing(true);
     setCurrentPriority(level);
     updatePriority(level, { status: 'scanning', issues: [] });
-    setFilesScanned(0);
     setStatusMessage(`Analyzing Priority ${level} files...`);
 
     const priorityIssues: AnalysisIssue[] = [];
+    const fetchedPaths: string[] = [];
     let scanComplete = false;
+    let scanCancelled = false;
 
-    analysisRef.current = api.analyzeRepository(
-      inputUrl,
+    const activeAnalysis = api.analyzeRepository(
+      sessionRepoUrlRef.current,
       apiKey!,
       level,
       {
         onStatus: (data) => {
+          if (scanCancelled || analysisGeneration !== analysisGenerationRef.current) return;
           setStatusMessage(data.message);
           if (data.filesScanned > 0) {
-            setFilesScanned(data.filesScanned);
+            setFilesScanned(sessionTotalsRef.current.filesScanned + data.filesScanned);
           }
-          // Update file list with actual files
-          if (data.currentFile) {
-            const currentFiles = priorities.find(p => p.level === level)?.files || [];
-            if (!currentFiles.includes(data.currentFile)) {
-              updatePriority(level, {
-                files: [...currentFiles.filter(f => !f.startsWith('security-file-') && !f.startsWith('core-file-') && !f.startsWith('support-file-')), data.currentFile]
-              });
-            }
+          if (data.currentFile && !fetchedPaths.includes(data.currentFile)) {
+            fetchedPaths.push(data.currentFile);
+            updatePriority(level, { files: [...fetchedPaths] });
           }
         },
         onIssue: (issue) => {
+          if (scanCancelled || analysisGeneration !== analysisGenerationRef.current) return;
           const storeIssue = toStoreIssue(issue);
           priorityIssues.push(storeIssue);
           updatePriority(level, { issues: [...priorityIssues] });
         },
         onComplete: (data) => {
+          if (scanCancelled || analysisGeneration !== analysisGenerationRef.current) return;
           scanComplete = true;
-          addTokensUsed(data.tokensUsed);
+          sessionTotalsRef.current.tokensUsed += data.tokensUsed;
+          sessionTotalsRef.current.cost += data.cost;
+          sessionTotalsRef.current.filesScanned += data.filesScanned;
+          setFilesScanned(sessionTotalsRef.current.filesScanned);
+          sessionIssuesRef.current[level] = priorityIssues;
+          setTotalTokensUsed(sessionTotalsRef.current.tokensUsed);
+          setTotalCost(sessionTotalsRef.current.cost);
           updatePriority(level, {
             status: 'complete',
+            files: [...fetchedPaths],
             tokenCount: data.tokensUsed,
             issues: priorityIssues
           });
 
-          // Calculate vibe score based on issues
           const allIssues = priorities.flatMap((p) => p.issues).concat(priorityIssues);
-          const criticalCount = allIssues.filter((i) => i.severity === 'critical').length;
-          const importantCount = allIssues.filter((i) => i.severity === 'important').length;
-          setVibeScore(Math.max(0, 100 - criticalCount * 20 - importantCount * 5));
+          setVibeScore(calculateVibeScore(allIssues));
 
           if (level < 3) {
             setAwaitingApproval(level as 1 | 2);
             setIsAnalyzing(false);
             setCurrentPriority(null);
-            // Stop timer when awaiting approval
             if (timerRef.current) {
               clearInterval(timerRef.current);
               timerRef.current = null;
@@ -266,6 +242,7 @@ export default function AnalyzePage() {
           }
         },
         onError: (error) => {
+          if (scanCancelled || analysisGeneration !== analysisGenerationRef.current) return;
           console.error('Analysis error:', error);
           toast.error(error.message || 'Analysis failed');
 
@@ -273,7 +250,6 @@ export default function AnalyzePage() {
             updatePriority(level, { status: 'pending' });
           }
 
-          // Stop timer on error
           if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
@@ -283,16 +259,25 @@ export default function AnalyzePage() {
           setCurrentPriority(null);
           setStatusMessage('');
         },
-      }
+      },
+      sessionEffortRef.current,
     );
+    analysisRef.current = {
+      abort: () => {
+        scanCancelled = true;
+        activeAnalysis.abort();
+      },
+    };
   };
 
   const handleApproval = (approved: boolean) => {
     if (approved && awaitingApproval) {
       setAwaitingApproval(null);
-      // Restart timer when continuing to next priority
       if (!timerRef.current) {
-        timerRef.current = setInterval(() => incrementElapsedTime(), 1000);
+        timerRef.current = setInterval(() => {
+          elapsedTimeRef.current += 1;
+          incrementElapsedTime();
+        }, 1000);
       }
       startPriorityScan((awaitingApproval + 1) as 2 | 3);
     } else {
@@ -305,7 +290,10 @@ export default function AnalyzePage() {
   };
 
   const loadHistory = (entry: api.HistoryEntry) => {
-    // Stop any existing timer first
+    analysisGenerationRef.current += 1;
+    analysisRef.current?.abort();
+    analysisRef.current = null;
+    invalidateEstimate();
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -315,35 +303,34 @@ export default function AnalyzePage() {
 
     setInputUrl(entry.repo_url);
     setRepoUrl(entry.repo_url);
+    sessionRepoUrlRef.current = entry.repo_url;
 
-    // Mock repo info from history since we don't store all of it
     const fullName = entry.repo_full_name || entry.repo_name;
     const ownerPart = fullName.includes('/') ? fullName.split('/')[0] : '';
-    setRepoInfo({
+    const loadedRepoInfo = {
       owner: ownerPart,
       name: entry.repo_name,
       fullName: fullName,
       stars: 0,
       lastUpdate: entry.created_at,
-    });
+    };
+    setRepoInfo(loadedRepoInfo);
+    sessionRepoInfoRef.current = loadedRepoInfo;
 
     setVibeScore(entry.vibe_score);
     setTotalTokensUsed(entry.tokens_used);
+    setTotalCost(entry.cost);
 
-    // Restore stats or fallback
     const filesInIssues = new Set(entry.issues.map(i => i.file).filter(f => f && f !== 'unknown')).size;
     setFilesScanned(entry.files_scanned || filesInIssues || 0);
     setElapsedTime(entry.duration_ms ? Math.floor(entry.duration_ms / 1000) : 0);
+    elapsedTimeRef.current = entry.duration_ms ? Math.floor(entry.duration_ms / 1000) : 0;
 
-    // Distribute issues back to priorities
     const backendIssues = entry.issues || [];
 
-    // Map based on category (if available) or severity fallback
-    // Map based on category (if available) or severity fallback
     const p1 = backendIssues.filter(i => i.category === 'security' || (!i.category && (i.severity?.toUpperCase() === 'CRITICAL' || i.severity?.toUpperCase() === 'HIGH'))).map(toStoreIssue);
     const p2 = backendIssues.filter(i => i.category === 'bug' || i.category === 'performance').map(toStoreIssue);
     const p3 = backendIssues.filter(i => i.category === 'quality' || (!i.category && i.severity?.toUpperCase() === 'LOW')).map(toStoreIssue);
-
 
     const getUniqueFiles = (issues: AnalysisIssue[]) => Array.from(new Set(issues.filter(i => i.file).map(i => i.file!)));
 
@@ -371,26 +358,26 @@ export default function AnalyzePage() {
     toast.success('Analysis complete!');
 
 
-    // Save to history if authenticated
-    if (isAuthenticated && repoInfo) {
+    const sessionRepoInfo = sessionRepoInfoRef.current;
+    if (isAuthenticated && sessionRepoInfo) {
       try {
-        // Prepare issues with correct categories
-        const p1Issues = priorities.find(p => p.level === 1)?.issues.map(i => ({ ...i, category: 'security' as const })) || [];
-        const p2Issues = priorities.find(p => p.level === 2)?.issues.map(i => ({ ...i, category: 'bug' as const })) || [];
-        const p3Issues = priorities.find(p => p.level === 3)?.issues.map(i => ({ ...i, category: 'quality' as const })) || [];
-
-        const allIssues = [...p1Issues, ...p2Issues, ...p3Issues];
+        const allIssues = ([1, 2, 3] as const).flatMap((priority) => sessionIssuesRef.current[priority].map((issue) => ({
+          ...issue, category: priority === 1 ? 'security' as const : priority === 2 ? 'bug' as const : 'quality' as const,
+        })));
+        const finalVibeScore = calculateVibeScore(allIssues);
+        setVibeScore(finalVibeScore);
 
         await api.saveAnalysis({
-          repoUrl: inputUrl,
-          repoName: repoInfo.name,
-          repoFullName: repoInfo.fullName,
+          repoUrl: sessionRepoUrlRef.current,
+          repoName: sessionRepoInfo.name,
+          repoFullName: sessionRepoInfo.fullName,
           issuesCount: allIssues.length,
-          vibeScore,
-          tokensUsed: totalTokensUsed,
-          cost: (totalTokensUsed / 1000000) * 0.14,
-          filesScanned,
-          durationMs: elapsedTime * 1000,
+          vibeScore: finalVibeScore,
+          tokensUsed: sessionTotalsRef.current.tokensUsed,
+          cost: sessionTotalsRef.current.cost,
+          filesScanned: sessionTotalsRef.current.filesScanned,
+          durationMs: elapsedTimeRef.current * 1000,
+          effort: sessionEffortRef.current,
           issues: allIssues.map(issue => ({
             id: issue.id,
             title: issue.title,
@@ -400,7 +387,7 @@ export default function AnalyzePage() {
             line: issue.line,
             codeExample: issue.codeExample,
             fix: issue.suggestion,
-            category: issue.category, // Use the assigned category
+            category: issue.category,
           })),
         });
         toast.success('Analysis saved to history');
@@ -540,11 +527,21 @@ export default function AnalyzePage() {
                 type="url"
                 placeholder="https://github.com/owner/repo"
                 value={inputUrl}
-                onChange={(e) => setInputUrl(e.target.value)}
+                onChange={(e) => {
+                  invalidateEstimate();
+                  setInputUrl(e.target.value);
+                }}
                 disabled={isAnalyzing}
                 className="bg-input"
               />
             )}
+
+            <EffortSelector
+              value={effort}
+              onChange={handleEffortChange}
+              maxFilesPerPriority={maxFilesPerPriority}
+              disabled={isEffortSelectorLocked(isAnalyzing, awaitingApproval)}
+            />
 
             <Button
               onClick={handleStartAnalysis}
@@ -1039,7 +1036,7 @@ export default function AnalyzePage() {
                     <div className="text-xs text-muted-foreground">Time</div>
                   </div>
                   <div className="p-3 rounded-lg border border-border bg-card text-center">
-                    <div className="font-mono font-semibold text-success">${((totalTokensUsed / 1000000) * 0.14).toFixed(4)}</div>
+                    <div className="font-mono font-semibold text-success">${totalCost.toFixed(4)}</div>
                     <div className="text-xs text-muted-foreground">Cost</div>
                   </div>
                 </div>

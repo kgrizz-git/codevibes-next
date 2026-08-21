@@ -37,3 +37,6 @@ tmp/
 
 # Coverage output
 coverage/
+
+# Agent scratch / working notes (Kilo)
+.kilo/plans/
