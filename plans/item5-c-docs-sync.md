@@ -26,11 +26,12 @@ documentation was updated.
 
 ## Generated contract
 
-`scripts/review-pipeline-contract.mjs` currently extracts the literal P3 extensions, old
-`MAX_FILES_PER_PRIORITY` declaration, estimate constants, and legacy generation parameters. A
-classifier/cap/provider refactor can make it throw or report incomplete data rather than merely
-make `generated-contract.md` stale. Update the generator first in the same PR so it extracts the
-new canonical configuration and labels layer-dependent facts unambiguously.
+`scripts/review-pipeline-contract.mjs` extracts literal P3 extensions and policy arrays from
+`fileFilter.ts`, global and effort-cap defaults from `config/effort.ts`, estimate constants, and
+legacy generation parameters. A classifier/cap/provider refactor can make it throw or report
+incomplete data rather than merely make `generated-contract.md` stale. Update the generator first
+in the same PR so it extracts the new canonical configuration and labels layer-dependent facts
+unambiguously.
 
 Then run and commit the result:
 

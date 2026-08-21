@@ -10,7 +10,7 @@
 | Fact | Source value |
 |---|---|
 | Recognized source extensions | `js ts jsx tsx py java go rb php rs kt kts cs c h cc cpp cxx hpp m mm swift scala sc ex exs dart lua r pl pm sh bash zsh ps1 fs fsx vb groovy clj cljs hs erl hrl zig sol` |
-| P1 dotenv policy | `.env .envrc`, plus `.env.<mode>[.<mode>...]`; modes containing `example`, `template`, or `sample` are not selected |
+| P1 dotenv policy | direct: `.env .envrc`; mode matcher: `/^\.env(?:\.[^./]+)+$/`; excluded segments: `example template sample` |
 | Terraform policy | P1: `**/*.tf **/*.tfvars **/*.tf.json **/*.tfvars.json`; ignored: `.terraform/** **/.terraform/**` |
 | Priority order | ignore → P1 → P2 → P3 (first match wins) |
 

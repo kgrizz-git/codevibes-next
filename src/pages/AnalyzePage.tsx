@@ -37,21 +37,22 @@ async function validateAndEstimateRepo(
   setStatusMessage: (message: string) => void,
   setRepoInfo: (info: RepoInfo) => void,
   loadEstimate: (repoUrl: string, selectedEffort: api.EffortLevel) => Promise<api.AnalysisEstimate | null>,
-): Promise<boolean> {
+): Promise<RepoInfo | null> {
   try {
     setStatusMessage('Validating repository...');
     const result = await api.validateRepo(`https://github.com/${owner}/${name}`);
     if (!result.valid) {
       toast.error(result.error || 'Repository not found');
-      return false;
+      return null;
     }
 
-    setRepoInfo({ owner, name, fullName: result.fullName, stars: result.stars, lastUpdate: result.lastUpdate, defaultBranch: result.defaultBranch });
+    const repoInfo = { owner, name, fullName: result.fullName, stars: result.stars, lastUpdate: result.lastUpdate, defaultBranch: result.defaultBranch };
+    setRepoInfo(repoInfo);
     setStatusMessage('Estimating analysis...');
-    return (await loadEstimate(`https://github.com/${owner}/${name}`, effort)) !== null;
+    return (await loadEstimate(`https://github.com/${owner}/${name}`, effort)) !== null ? repoInfo : null;
   } catch (error: unknown) {
     toast.error(error instanceof Error ? error.message : 'Failed to fetch repository info');
-    return false;
+    return null;
   }
 }
 
@@ -86,6 +87,7 @@ export default function AnalyzePage() {
   const elapsedTimeRef = useRef(0);
   const analysisRef = useRef<{ abort: () => void } | null>(null);
   const sessionEffortRef = useRef<api.EffortLevel>('standard');
+  const sessionRepoInfoRef = useRef<RepoInfo | null>(null);
   const sessionTotalsRef = useRef({ tokensUsed: 0, cost: 0, filesScanned: 0 });
   const sessionIssuesRef = useRef<Record<1 | 2 | 3, AnalysisIssue[]>>({ 1: [], 2: [], 3: [] });
   const { invalidate: invalidateEstimate, load: loadEstimate, maxFilesPerPriority } = useEffortEstimate(updatePriority);
@@ -141,14 +143,16 @@ export default function AnalyzePage() {
     resetAnalysis();
     setIsAnalyzing(true);
     sessionEffortRef.current = selectedEffort;
+    sessionRepoInfoRef.current = null;
     sessionTotalsRef.current = { tokensUsed: 0, cost: 0, filesScanned: 0 };
     sessionIssuesRef.current = { 1: [], 2: [], 3: [] };
     setTotalCost(0);
     elapsedTimeRef.current = 0;
     invalidateEstimate();
 
-    const success = await validateAndEstimateRepo(parsed.owner, parsed.name, sessionEffortRef.current, setStatusMessage, setRepoInfo, loadEstimate);
-    if (!success) { setIsAnalyzing(false); setStatusMessage(''); return; }
+    const validatedRepoInfo = await validateAndEstimateRepo(parsed.owner, parsed.name, sessionEffortRef.current, setStatusMessage, setRepoInfo, loadEstimate);
+    if (!validatedRepoInfo) { setIsAnalyzing(false); setStatusMessage(''); return; }
+    sessionRepoInfoRef.current = validatedRepoInfo;
 
     timerRef.current = setInterval(() => {
       elapsedTimeRef.current += 1;
@@ -283,13 +287,15 @@ export default function AnalyzePage() {
 
     const fullName = entry.repo_full_name || entry.repo_name;
     const ownerPart = fullName.includes('/') ? fullName.split('/')[0] : '';
-    setRepoInfo({
+    const loadedRepoInfo = {
       owner: ownerPart,
       name: entry.repo_name,
       fullName: fullName,
       stars: 0,
       lastUpdate: entry.created_at,
-    });
+    };
+    setRepoInfo(loadedRepoInfo);
+    sessionRepoInfoRef.current = loadedRepoInfo;
 
     setVibeScore(entry.vibe_score);
     setTotalTokensUsed(entry.tokens_used);
@@ -332,7 +338,8 @@ export default function AnalyzePage() {
     toast.success('Analysis complete!');
 
 
-    if (isAuthenticated && repoInfo) {
+    const sessionRepoInfo = sessionRepoInfoRef.current;
+    if (isAuthenticated && sessionRepoInfo) {
       try {
         const allIssues = ([1, 2, 3] as const).flatMap((priority) => sessionIssuesRef.current[priority].map((issue) => ({
           ...issue, category: priority === 1 ? 'security' as const : priority === 2 ? 'bug' as const : 'quality' as const,
@@ -342,8 +349,8 @@ export default function AnalyzePage() {
 
         await api.saveAnalysis({
           repoUrl: inputUrl,
-          repoName: repoInfo.name,
-          repoFullName: repoInfo.fullName,
+          repoName: sessionRepoInfo.name,
+          repoFullName: sessionRepoInfo.fullName,
           issuesCount: allIssues.length,
           vibeScore: finalVibeScore,
           tokensUsed: sessionTotalsRef.current.tokensUsed,

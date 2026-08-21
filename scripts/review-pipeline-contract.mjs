@@ -48,6 +48,16 @@ const priority1DirectPatterns = [...requireMatch(
   "priority 1 direct patterns",
 ).matchAll(/'([^']+)'/g)].map((match) => match[1]);
 const dotenvPatterns = priority1DirectPatterns.filter((pattern) => pattern.startsWith(".env"));
+const dotenvModePattern = requireMatch(
+  fileFilter,
+  /const DOTENV_MODE_FILE_PATTERN = (\/[^\n]+\/);/,
+  "dotenv mode matcher",
+);
+const excludedDotenvSegments = [...requireMatch(
+  fileFilter,
+  /const NON_DEPLOYABLE_DOTENV_SEGMENTS = new Set\(\[([^\]]+)\]\);/,
+  "excluded dotenv mode segments",
+).matchAll(/'([^']+)'/g)].map((match) => match[1]);
 const terraformPatterns = priority1DirectPatterns.filter((pattern) => pattern.includes("*.tf"));
 const terraformIgnorePatterns = ignoredPatterns.filter((pattern) => pattern.includes(".terraform"));
 const events = [...analysis.matchAll(/type:\s*'([a-z]+)'/g)].map((match) => match[1]);
@@ -84,7 +94,7 @@ const content = `# Generated Review-Pipeline Contract
 | Fact | Source value |
 |---|---|
 | Recognized source extensions | \`${extensions.join(" ")}\` |
-| P1 dotenv policy | \`${dotenvPatterns.join(" ")}\`, plus \`.env.<mode>[.<mode>...]\`; modes containing \`example\`, \`template\`, or \`sample\` are not selected |
+| P1 dotenv policy | direct: \`${dotenvPatterns.join(" ")}\`; mode matcher: \`${dotenvModePattern}\`; excluded segments: \`${excludedDotenvSegments.join(" ")}\` |
 | Terraform policy | P1: \`${terraformPatterns.join(" ")}\`; ignored: \`${terraformIgnorePatterns.join(" ")}\` |
 | Priority order | ignore → P1 → P2 → P3 (first match wins) |
 
