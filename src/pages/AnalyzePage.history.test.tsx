@@ -114,6 +114,41 @@ describe('AnalyzePage history persistence', () => {
     })));
   });
 
+  it('keeps using the starting URL when the input changes at an approval gate', async () => {
+    const originalUrl = 'https://github.com/owner/repo';
+    const editedUrl = 'https://github.com/other/repository';
+    render(<MemoryRouter><AnalyzePage /></MemoryRouter>);
+
+    fireEvent.change(screen.getByPlaceholderText('https://github.com/owner/repo'), {
+      target: { value: originalUrl },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /start analysis/i }));
+
+    await waitFor(() => expect(callbacksByPriority.get(1)).toBeDefined());
+    await act(async () => { callbacksByPriority.get(1)?.onComplete?.(complete(1)); });
+    fireEvent.change(screen.getByPlaceholderText('https://github.com/owner/repo'), {
+      target: { value: editedUrl },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to P2' }));
+
+    await waitFor(() => expect(callbacksByPriority.get(2)).toBeDefined());
+    expect(api.analyzeRepository).toHaveBeenNthCalledWith(
+      2, originalUrl, 'sk-test', 2, expect.any(Object), 'standard',
+    );
+    await act(async () => { callbacksByPriority.get(2)?.onComplete?.(complete(2)); });
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to P3' }));
+
+    await waitFor(() => expect(callbacksByPriority.get(3)).toBeDefined());
+    expect(api.analyzeRepository).toHaveBeenNthCalledWith(
+      3, originalUrl, 'sk-test', 3, expect.any(Object), 'standard',
+    );
+    await act(async () => { callbacksByPriority.get(3)?.onComplete?.(complete(3)); });
+
+    await waitFor(() => expect(api.saveAnalysis).toHaveBeenCalledWith(expect.objectContaining({
+      repoUrl: originalUrl,
+    })));
+  });
+
   it('cancels an active scan before loading history and ignores its late completion', async () => {
     render(<MemoryRouter><AnalyzePage /></MemoryRouter>);
 

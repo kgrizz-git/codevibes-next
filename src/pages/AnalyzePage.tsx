@@ -87,6 +87,7 @@ export default function AnalyzePage() {
   const analysisGenerationRef = useRef(0);
   const sessionEffortRef = useRef<api.EffortLevel>('standard');
   const sessionRepoInfoRef = useRef<RepoInfo | null>(null);
+  const sessionRepoUrlRef = useRef('');
   const sessionTotalsRef = useRef({ tokensUsed: 0, cost: 0, filesScanned: 0 });
   const sessionIssuesRef = useRef<Record<1 | 2 | 3, AnalysisIssue[]>>({ 1: [], 2: [], 3: [] });
   const { invalidate: invalidateEstimate, load: loadEstimate, maxFilesPerPriority } = useEffortEstimate(updatePriority);
@@ -144,6 +145,7 @@ export default function AnalyzePage() {
     setIsAnalyzing(true);
     sessionEffortRef.current = selectedEffort;
     sessionRepoInfoRef.current = null;
+    sessionRepoUrlRef.current = inputUrl;
     sessionTotalsRef.current = { tokensUsed: 0, cost: 0, filesScanned: 0 };
     sessionIssuesRef.current = { 1: [], 2: [], 3: [] };
     setTotalCost(0);
@@ -185,7 +187,7 @@ export default function AnalyzePage() {
     let scanCancelled = false;
 
     const activeAnalysis = api.analyzeRepository(
-      inputUrl,
+      sessionRepoUrlRef.current,
       apiKey!,
       level,
       {
@@ -301,6 +303,7 @@ export default function AnalyzePage() {
 
     setInputUrl(entry.repo_url);
     setRepoUrl(entry.repo_url);
+    sessionRepoUrlRef.current = entry.repo_url;
 
     const fullName = entry.repo_full_name || entry.repo_name;
     const ownerPart = fullName.includes('/') ? fullName.split('/')[0] : '';
@@ -365,7 +368,7 @@ export default function AnalyzePage() {
         setVibeScore(finalVibeScore);
 
         await api.saveAnalysis({
-          repoUrl: inputUrl,
+          repoUrl: sessionRepoUrlRef.current,
           repoName: sessionRepoInfo.name,
           repoFullName: sessionRepoInfo.fullName,
           issuesCount: allIssues.length,

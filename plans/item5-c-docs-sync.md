@@ -14,7 +14,7 @@ them.
 
 | Change | Required updates |
 |---|---|
-| Extensions, ignore rules, priority rules, classifier decision metadata | `02-file-selection.md`, `06-extension-hooks.md`; regenerate contract if P3 extensions change |
+| Extensions, ignore rules, priority rules, classifier decision metadata | `02-file-selection.md`, `06-extension-hooks.md`; regenerate contract when any extracted file-selection rule changes, including P1 patterns, ignore patterns, dotenv rules, Terraform rules, and P3 extensions |
 | File-cap resolver, effort validation, estimates, complete payload, scope metadata | `03-orchestration-sse.md`, pipeline index, `.env.example`; `05-cost-model.md` when estimation inputs/assumptions change |
 | Prompt variants, provider/model token limits, schema, truncation behavior | `04-reviewing-agent.md`, `06-extension-hooks.md`, pipeline index |
 | Stored effort/history behavior | API/history documentation and the relevant user-facing history text; provider-plan schema notes if migrations are coordinated |
