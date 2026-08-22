@@ -24,7 +24,7 @@
         "jsonwebtoken": "^9.0.3",
         "minimatch": "^9.0.9",
         "tiktoken": "^1.0.12",
-        "uuid": "^13.0.2"
+        "uuid": "^14.0.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.32.0",
