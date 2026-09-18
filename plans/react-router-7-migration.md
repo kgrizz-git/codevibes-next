@@ -79,8 +79,14 @@ upgrade is viable.
    Set `future` flags on `<BrowserRouter>` (`v7_startTransition`,
    `v7_relativeSplatPath`) to surface any behavior changes while still on v6. Ship and
    verify. This step is independently revertible.
+   - **Important:** these are v6-only opt-in flags. In v7 their behavior becomes the
+     default and the flag names are **no longer valid `BrowserRouter` `future` options**,
+     so they MUST be removed as part of step 2 (leaving them causes a `typecheck` failure
+     and/or leaves meaningless props). If you skip this optional step 1, add no flags.
 2. **Bump to v7.** Update `react-router-dom` to `^7.18.0` (drop the deferral in
-   `AGENTS.md`). The declarative APIs in use (`BrowserRouter`, `Routes`, `Route`,
+   `AGENTS.md`). **Remove the v6 `future` flags added in step 1** (`v7_startTransition`,
+   `v7_relativeSplatPath`) from `<BrowserRouter>` in the same change — they are invalid in
+   v7. The declarative APIs in use (`BrowserRouter`, `Routes`, `Route`,
    `Link`, `NavLink`, `useNavigate`, `useLocation`, `MemoryRouter`) remain available
    from `react-router-dom` in v7 — a minimal bump needs **no import rewrites**.
    - Note: v7 unifies packages into `react-router`; `react-router-dom` still works as a
@@ -129,6 +135,9 @@ These are separate, optional follow-ups; keep the security-driven bump minimal.
 Per `plans/decisions/0001-verification-command-contract.md`:
 
 - [ ] `npm run lint` — 0 errors (pre-existing legacy warnings unchanged).
+- [ ] If the optional step-1 future flags were added, confirm `v7_startTransition` and
+      `v7_relativeSplatPath` are **removed** from `<BrowserRouter>` in `src/App.tsx` (they
+      are invalid in v7 and will fail `typecheck` if left).
 - [ ] `npm run typecheck` — clean (watch for RR7 type changes on `NavLink`/`useNavigate`).
 - [ ] `NavLink` wrapper: confirm `src/components/NavLink.tsx` typechecks under RR7 and that
       the `isPending`/`pendingClassName` path is removed or guarded (see Breaking changes).
