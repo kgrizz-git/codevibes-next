@@ -1,7 +1,8 @@
 # React Router 7 Migration Plan
 
-- **Status:** Proposed (reviewed — 2 independent approvals: StepFun 3.7 Flash "approve with
-  changes" [NavLink finding incorporated]; agy Gemini 3.8 Flash High "approve")
+- **Status:** Proposed
+- **Reviews:** 2 independent approvals — StepFun 3.7 Flash ("approve with changes";
+  NavLink finding incorporated) and agy Gemini 3.8 Flash High ("approve").
 - **Date:** 2026-09-18
 - **Owner:** Frontend / dependency-security workstream
 - **Depends on / relates to:** `AGENTS.md` dependency policy (react-router 7.x is a
