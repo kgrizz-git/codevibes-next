@@ -1,6 +1,7 @@
 # React Router 7 Migration Plan
 
-- **Status:** Done (implemented 2026-09-18, PR #21 — `react-router-dom` `^7.18.0`, resolves to 7.18.4)
+- **Status:** archived
+- **Completed:** implemented 2026-09-18, PR #21 — `react-router-dom` `^7.18.0`, resolves to 7.18.4
 - **Reviews:** 2 independent approvals — StepFun 3.7 Flash ("approve with changes";
   NavLink finding incorporated) and agy Gemini 3.8 Flash High ("approve").
 - **Date:** 2026-09-18
