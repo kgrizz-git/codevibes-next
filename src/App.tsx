@@ -30,8 +30,6 @@ const App = () => (
             <Route path="/analyze" element={<AnalyzePage />} />
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/documentation" element={<DocumentationPage />} />
-            <Route path="/results" element={<ResultsPage />} />
-            <Route path="/documentation" element={<DocumentationPage />} />
             <Route path="/changelog" element={<ChangelogPage />} />
             <Route path="/api-reference" element={<ApiReferencePage />} />
             <Route path="*" element={<NotFound />} />
