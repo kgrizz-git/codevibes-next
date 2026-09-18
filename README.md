@@ -478,6 +478,9 @@ function calculateVibeScore(issues: Issue[]): number {
 🔒 **Auth cookie**: `auth_token` is AES-256-GCM encrypted; legacy JWTs still verify.
 🔒 **API keys**: DeepSeek keys are encrypted in localStorage; old plaintext keys migrate on read.
 
+### [v1.0.5] - 2026-09-18
+🔒 **React Router 7**: Upgraded `react-router-dom` 6.x → 7.18.x, closing two medium Dependabot advisories (GHSA-wrjc-x8rr-h8h6 open-redirect, GHSA-337j-9hxr-rhxg SSR `deserializeErrors`). Minimal library-mode bump — no import rewrites; removed now-dead `isPending`/`pendingClassName` from the `NavLink` wrapper. See `plans/react-router-7-migration.md`.
+
 ---
 
 ## 🤝 Contributing
