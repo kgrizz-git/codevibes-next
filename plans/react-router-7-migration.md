@@ -88,6 +88,26 @@ upgrade is viable.
    lockfile resolves `react-router` >= 7.18.0 in every tree.
 4. **Verify** (see below) and update docs.
 
+### Breaking changes to handle during the bump
+
+Surfaced by independent review (StepFun 3.7 Flash, 2026-09-18):
+
+- **`NavLink` `isPending` is library-mode dead code in v7.** `src/components/NavLink.tsx`
+  (lines ~17-18) destructures `isPending` from the `className` callback and applies
+  `pendingClassName`. In React Router 7, `isPending` is only populated in **Framework/Data
+  modes** (data router); under declarative `BrowserRouter`, it is never true, so
+  `pendingClassName` silently becomes dead behavior after the bump.
+  - **Practical impact: none today.** This `NavLink` wrapper is **not imported anywhere**
+    in `src/` (the layout uses `Link` from `react-router-dom` directly), and no caller
+    passes `pendingClassName`. So this is a latent/cosmetic issue, not a live regression.
+  - **Action:** during the bump, either drop `pendingClassName`/`isPending` from the
+    wrapper, or guard it clearly as data-mode-only, so the code doesn't imply behavior it
+    no longer provides. Low effort; do it in the same PR to avoid leaving misleading code.
+- No other RR7 breaking changes affect this app: `useNavigate`/`useLocation`/`Link`
+  signatures are unchanged for the string-literal usage here; there are no splat (`*`)
+  routes needing `v7_relativeSplatPath` semantics beyond the catch-all `NotFound` route,
+  and no data-router APIs in use.
+
 ### Explicitly out of scope (do NOT bundle)
 
 - Migrating to `createBrowserRouter`/`RouterProvider` (data router).
@@ -102,6 +122,8 @@ Per `plans/decisions/0001-verification-command-contract.md`:
 
 - [ ] `npm run lint` — 0 errors (pre-existing legacy warnings unchanged).
 - [ ] `npm run typecheck` — clean (watch for RR7 type changes on `NavLink`/`useNavigate`).
+- [ ] `NavLink` wrapper: confirm `src/components/NavLink.tsx` typechecks under RR7 and that
+      the `isPending`/`pendingClassName` path is removed or guarded (see Breaking changes).
 - [ ] `npm run test:frontend` — all pass; pay attention to the two `MemoryRouter` tests.
 - [ ] `npm run build` — succeeds.
 - [ ] Manual smoke: every route (`/`, `/setup`, `/analyze`, `/results`,
@@ -114,9 +136,15 @@ Per `plans/decisions/0001-verification-command-contract.md`:
 
 ## Rollback
 
-Single-dependency, override-free bump on an isolated branch. Revert = restore the prior
-`react-router-dom` range and lockfile entry. No data-layer or architectural changes are
-introduced by the recommended path, so rollback is a clean dependency revert.
+Single-dependency, override-free bump on an isolated branch. Revert =
+restore the prior `react-router-dom` range and lockfile entry, **and** revert any
+`AGENTS.md` deferred-majors edit, README changelog entry, and `NavLink.tsx` change made in
+the same PR. No data-layer or architectural changes are introduced by the recommended
+path, so rollback is a clean multi-file revert of a single PR.
+
+> Note: the optional `v7_relativeSplatPath` future-flag de-risking step (Recommended path,
+> step 1) is not strictly necessary for this flat-route app and can be skipped to keep the
+> change minimal.
 
 ## Decision needed before implementing
 
