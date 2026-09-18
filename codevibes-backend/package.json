@@ -50,6 +50,7 @@
     "overrides": {
         "body-parser": "1.20.6",
         "qs": "6.15.3",
+        "proxy-addr": "2.0.8",
         "express": {
             "path-to-regexp": "0.1.13"
         },
