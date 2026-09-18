@@ -1,6 +1,7 @@
 # React Router 7 Migration Plan
 
-- **Status:** Proposed
+- **Status:** archived
+- **Completed:** implemented 2026-09-18, PR #21 — `react-router-dom` `^7.18.0`, resolves to 7.18.4
 - **Reviews:** 2 independent approvals — StepFun 3.7 Flash ("approve with changes";
   NavLink finding incorporated) and agy Gemini 3.8 Flash High ("approve").
 - **Date:** 2026-09-18
@@ -38,7 +39,8 @@ live-exposure is why it was correctly deferred rather than hot-fixed.
 
 ## Current usage inventory (as of 2026-09-18)
 
-Router version: `react-router-dom@6.30.6` (and transitive `react-router@6.30.6`).
+Router version at plan time: `react-router-dom@6.30.6` (and transitive `react-router@6.30.6`).
+Post-implementation (PR #21): `react-router-dom@7.18.4` / `react-router@7.18.4`.
 React: `18.3.1` (satisfies RR7's React 18+ requirement).
 
 The app uses **only the declarative/library-mode subset** of React Router:

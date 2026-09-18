@@ -6,6 +6,24 @@ import { Calendar, Plus, Wrench, Check, Rocket, ArrowLeft, GitBranch } from 'luc
 // Changelog data - add new entries at the top
 const changelogData = [
     {
+        version: 'v1.0.5',
+        date: 'September 18, 2026',
+        title: 'React Router 7 Upgrade',
+        description: 'Upgraded react-router-dom 6.x to 7.18.x, closing two medium Dependabot advisories (GHSA-wrjc-x8rr-h8h6 open-redirect, GHSA-337j-9hxr-rhxg SSR deserializeErrors).',
+        changes: [
+            {
+                type: 'fixed',
+                title: 'React Router 7.18.x',
+                description: 'Minimal library-mode bump with no import rewrites; react-router and react-router-dom resolve to 7.18.4.',
+            },
+            {
+                type: 'improved',
+                title: 'NavLink cleanup',
+                description: 'Removed now-dead isPending/pendingClassName from the NavLink wrapper, which is data-router-only in v7.',
+            },
+        ],
+    },
+    {
         version: 'v1.0.4-beta',
         date: 'August 19, 2026',
         title: 'CodeQL Cookie and Storage Hardening',
