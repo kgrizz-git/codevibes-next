@@ -1,6 +1,7 @@
 # React Router 7 Migration Plan
 
-- **Status:** Proposed
+- **Status:** Proposed (reviewed — 2 independent approvals: StepFun 3.7 Flash "approve with
+  changes" [NavLink finding incorporated]; agy Gemini 3.8 Flash High "approve")
 - **Date:** 2026-09-18
 - **Owner:** Frontend / dependency-security workstream
 - **Depends on / relates to:** `AGENTS.md` dependency policy (react-router 7.x is a
@@ -107,6 +108,12 @@ Surfaced by independent review (StepFun 3.7 Flash, 2026-09-18):
   signatures are unchanged for the string-literal usage here; there are no splat (`*`)
   routes needing `v7_relativeSplatPath` semantics beyond the catch-all `NotFound` route,
   and no data-router APIs in use.
+- **Splat route confirmed safe (verified by second review — agy Gemini 3.8 Flash High,
+  2026-09-18):** the one splat route, `<Route path="*" element={<NotFound />} />` in
+  `src/App.tsx`, is unaffected by RR7's `v7_relativeSplatPath` relative-resolution change.
+  `src/pages/NotFound.tsx` uses only `useLocation` (read-only) and a plain HTML
+  `<a href="/">` — no relative React Router links — so there is nothing for the new splat
+  semantics to change.
 
 ### Explicitly out of scope (do NOT bundle)
 
